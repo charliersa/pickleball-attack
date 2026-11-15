@@ -1,0 +1,34 @@
+{
+  "rules": {
+    "chains": {
+      "$chainId": {
+        ".read": true,
+        ".write": "!data.exists()",
+        ".validate": "newData.hasChildren(['title', 'date', 'time', 'place', 'capacity', 'createdAt', 'creator'])",
+        "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+        "date": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+        "time": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
+        "place": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+        "capacity": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 200" },
+        "createdAt": { ".validate": "newData.val() == now" },
+        "creator": {
+          ".validate": "newData.hasChildren(['id', 'name'])",
+          "id": { ".validate": "newData.isString() && newData.val().length <= 64" },
+          "name": { ".validate": "newData.isString() && newData.val().length <= 50" },
+          "$other": { ".validate": false }
+        },
+        "entries": {
+          "$uid": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['name', 'guests', 'ts'])",
+            "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+            "guests": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3 && newData.val() % 1 == 0" },
+            "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

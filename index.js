@@ -1,53 +1,63 @@
-// LINE Flex Message 發送邏輯（LIFF 版，可直接跑在 GitHub Pages 這種純前端網站）
-// 到 LINE Developers → LINE Login channel → LIFF 建立 App 後，把 LIFF ID 填在這裡
+// 匹克球接龍報名（LIFF + Firebase Realtime Database）
+// 無 ?e= 參數：開團表單；有 ?e=<接龍ID>：報名頁
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {
+  getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+
 const LIFF_ID = '2012621364-BTCqnFfK';
+// 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 底下
+const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebasedatabase.app';
+const MAX_GUESTS = 3;     // 每人最多帶幾位朋友（要跟資料庫規則一致）
+const FLEX_MAX_ROWS = 40; // Flex 卡片最多列幾個名字，避免超過 LINE 訊息大小限制
 
-const statusEl = () => document.getElementById('status');
+const db = getDatabase(initializeApp({ databaseURL: DB_URL }));
+const $ = (id) => document.getElementById(id);
+
+let profile = null; // LINE 個人資料
+let chainId = null;
+let chain = null;   // 目前接龍的即時資料
+
 function setStatus(msg) {
-  statusEl().textContent = msg;
+  $('status').textContent = msg;
 }
 
-// 組出一張 Flex 卡片。data 欄位可依實際需求替換
-function buildFlexMessage(data) {
-  return {
-    type: 'flex',
-    altText: `${data.title}｜${data.date} ${data.time}`, // 通知列與不支援 Flex 的裝置會顯示這段，最多 400 字
-    contents: {
-      type: 'bubble',
-      hero: {
-        type: 'image',
-        url: data.imageUrl,
-        size: 'full',
-        aspectRatio: '20:13',
-        aspectMode: 'cover',
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'md',
-        contents: [
-          { type: 'text', text: data.title, weight: 'bold', size: 'xl', wrap: true },
-          infoRow('日期', data.date),
-          infoRow('時間', data.time),
-          infoRow('地點', data.place),
-        ],
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'button',
-            style: 'primary',
-            color: '#1DB446',
-            action: { type: 'uri', label: '查看詳情', uri: data.linkUrl },
-          },
-        ],
-      },
-    },
-  };
+function chainUrl(id) {
+  return `https://liff.line.me/${LIFF_ID}?e=${encodeURIComponent(id)}`;
 }
 
+function canSendToChat() {
+  const ctx = liff.isInClient() && liff.getContext();
+  return !!ctx && ['utou', 'room', 'group'].includes(ctx.type);
+}
+
+// ---------- 名額計算 ----------
+// 依報名時間排序，逐筆佔名額（本人 + 同行朋友）。
+// 一旦有人排不進，之後的人全部進候補，維持先來後到；有人取消時候補自動遞補。
+function splitEntries(c) {
+  const list = Object.entries(c.entries || {})
+    .map(([uid, e]) => ({ uid, ...e }))
+    .sort((a, b) => (a.ts - b.ts) || a.uid.localeCompare(b.uid));
+  const confirmed = [];
+  const waitlist = [];
+  let used = 0;
+  for (const e of list) {
+    const need = 1 + (e.guests || 0);
+    if (!waitlist.length && used + need <= c.capacity) {
+      confirmed.push(e);
+      used += need;
+    } else {
+      waitlist.push(e);
+    }
+  }
+  return { confirmed, waitlist, used };
+}
+
+function personLabel(e) {
+  return e.guests ? `${e.name} +${e.guests}` : e.name;
+}
+
+// ---------- Flex Message ----------
 function infoRow(label, value) {
   return {
     type: 'box',
@@ -60,57 +70,254 @@ function infoRow(label, value) {
   };
 }
 
-// 範例資料
-function getCardData() {
+function buildChainFlex(c, id) {
+  const { confirmed, waitlist, used } = splitEntries(c);
+  const rows = [];
+  let budget = FLEX_MAX_ROWS;
+
+  const addSection = (label, color, list) => {
+    rows.push({ type: 'text', text: label, weight: 'bold', size: 'sm', color, margin: 'lg' });
+    list.slice(0, budget).forEach((e, i) => {
+      rows.push({ type: 'text', text: `${i + 1}. ${personLabel(e)}`, size: 'sm', wrap: true });
+    });
+    if (list.length > budget) {
+      rows.push({ type: 'text', text: `…還有 ${list.length - budget} 位`, size: 'xs', color: '#aaaaaa' });
+    }
+    budget = Math.max(0, budget - list.length);
+  };
+
+  if (!confirmed.length && !waitlist.length) {
+    rows.push({ type: 'text', text: '還沒有人報名，快來搶頭香！', size: 'sm', color: '#aaaaaa', margin: 'lg' });
+  } else {
+    addSection(`正取 ${used}/${c.capacity}`, '#1DB446', confirmed);
+    if (waitlist.length) addSection(`候補 ${waitlist.length} 組`, '#FF8C00', waitlist);
+  }
+
   return {
-    title: '匹克球進攻練習團',
-    date: '2026/11/22（日）',
-    time: '09:00 - 12:00',
-    place: '六甲頂匹克球場',
-    imageUrl: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=1024',
-    linkUrl: 'https://charliersa.github.io/pickleball-attack/',
+    type: 'flex',
+    altText: `【接龍】${c.title} 正取 ${used}/${c.capacity}`,
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'md',
+        contents: [
+          { type: 'text', text: '🏓 匹克球接龍', size: 'xs', color: '#1DB446', weight: 'bold' },
+          { type: 'text', text: c.title, weight: 'bold', size: 'xl', wrap: true },
+          infoRow('日期', c.date),
+          infoRow('時間', c.time),
+          infoRow('地點', c.place),
+          { type: 'separator', margin: 'lg' },
+          ...rows,
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#1DB446',
+            action: { type: 'uri', label: '我要報名 / 修改', uri: chainUrl(id) },
+          },
+        ],
+      },
+    },
   };
 }
 
-// 方式一：發到「目前開啟 LIFF 的那個聊天室」
-// 只有從 LINE 聊天室內打開 LIFF 才能用，且 LIFF 需勾選 chat_message.write scope
-async function sendToCurrentChat() {
-  if (!liff.isInClient()) {
-    setStatus('請從 LINE 聊天室內開啟此頁面才能直接發送');
-    return;
+// 把最新名單發出去。inChatOnly=true 時只在聊天室內自動發，不跳分享選單
+async function postChain(id, { inChatOnly = false } = {}) {
+  const snap = await get(ref(db, `chains/${id}`));
+  const msg = buildChainFlex(snap.val(), id);
+  if (canSendToChat()) {
+    await liff.sendMessages([msg]);
+    return 'sent';
   }
-  const ctx = liff.getContext();
-  if (!ctx || !['utou', 'room', 'group'].includes(ctx.type)) {
-    setStatus('目前不在聊天室中，請改用「分享給好友」');
-    return;
+  if (inChatOnly) return 'skipped';
+  if (!liff.isApiAvailable('shareTargetPicker')) {
+    throw new Error('此環境不支援分享，請從 LINE 聊天室開啟');
   }
-  try {
-    await liff.sendMessages([buildFlexMessage(getCardData())]);
-    setStatus('已發送到聊天室 ✅');
-    liff.closeWindow();
-  } catch (err) {
-    console.error(err);
-    setStatus(`發送失敗：${err.message}`);
+  const res = await liff.shareTargetPicker([msg]);
+  return res ? 'shared' : 'cancelled';
+}
+
+// ---------- 開團 ----------
+function showCreate() {
+  $('createView').hidden = false;
+  setStatus('');
+  $('createForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const btn = $('createBtn');
+    btn.disabled = true;
+    setStatus('建立中…');
+    try {
+      const newRef = push(ref(db, 'chains'));
+      await set(newRef, {
+        title: $('fTitle').value.trim(),
+        date: $('fDate').value.trim(),
+        time: $('fTime').value.trim(),
+        place: $('fPlace').value.trim(),
+        capacity: Number($('fCapacity').value),
+        createdAt: serverTimestamp(),
+        creator: { id: profile.userId, name: profile.displayName.slice(0, 50) },
+      });
+      const result = await postChain(newRef.key);
+      // 切換成報名頁，讓團主也能直接報名
+      history.replaceState(null, '', `?e=${newRef.key}`);
+      $('createView').hidden = true;
+      chainId = newRef.key;
+      showChain();
+      setStatus(result === 'cancelled' ? '接龍已建立，可按「分享名單」發到群組' : '接龍已建立並發送 ✅');
+    } catch (err) {
+      console.error(err);
+      setStatus(`建立失敗：${err.message}`);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+// ---------- 報名頁 ----------
+let lastMyGuests = null;
+
+function renderChain() {
+  const { confirmed, waitlist, used } = splitEntries(chain);
+  $('cTitle').textContent = chain.title;
+  $('cInfo').textContent = `${chain.date}　${chain.time}　${chain.place}`;
+  $('cConfirmedHead').textContent = `正取 ${used}/${chain.capacity}`;
+  $('cWaitHead').textContent = `候補 ${waitlist.length} 組`;
+  $('cWaitHead').hidden = !waitlist.length;
+
+  const fill = (ol, list) => {
+    ol.replaceChildren(...list.map((e) => {
+      const li = document.createElement('li');
+      li.textContent = personLabel(e); // textContent 避免名字裡的 HTML 被執行
+      if (e.uid === profile.userId) li.className = 'me';
+      return li;
+    }));
+  };
+  fill($('cConfirmed'), confirmed);
+  fill($('cWait'), waitlist);
+
+  const mine = chain.entries?.[profile.userId];
+  const ci = confirmed.findIndex((e) => e.uid === profile.userId);
+  const wi = waitlist.findIndex((e) => e.uid === profile.userId);
+  $('myState').textContent = ci >= 0 ? `你是正取第 ${ci + 1} 位 ✅`
+    : wi >= 0 ? `你在候補第 ${wi + 1} 位，有人取消會自動遞補`
+      : '你還沒報名';
+  $('joinBtn').textContent = mine ? '更新同行人數' : '我要報名';
+  $('cancelBtn').hidden = !mine;
+
+  // 自己的同行人數有變（例如在別支手機改過）才同步下拉選單，避免蓋掉正在選的值
+  const g = mine ? mine.guests : 0;
+  if (g !== lastMyGuests) {
+    $('guests').value = String(g);
+    lastMyGuests = g;
   }
 }
 
-// 方式二：跳出好友/群組選擇器分享（LINE 內外都可用）
-// 需在 LIFF 設定頁開啟 shareTargetPicker
-async function shareToFriends() {
-  if (!liff.isApiAvailable('shareTargetPicker')) {
-    setStatus('此環境不支援分享，請確認 LIFF 已開啟 shareTargetPicker');
-    return;
-  }
+function setBusy(on) {
+  ['joinBtn', 'cancelBtn', 'shareListBtn'].forEach((id) => { $(id).disabled = on; });
+}
+
+async function announce(doneMsg) {
   try {
-    const res = await liff.shareTargetPicker([buildFlexMessage(getCardData())]);
-    // res 為 undefined 代表使用者取消；res.status === 'success' 代表已送出
-    setStatus(res ? '已分享 ✅' : '已取消分享');
+    const r = await postChain(chainId, { inChatOnly: true });
+    setStatus(r === 'sent' ? `${doneMsg}，已發送最新名單到聊天室` : doneMsg);
+  } catch (err) {
+    console.error(err);
+    setStatus(`${doneMsg}，但發送名單失敗：${err.message}`);
+  }
+}
+
+async function join() {
+  const guests = Number($('guests').value);
+  const mine = chain.entries?.[profile.userId];
+  const entryRef = ref(db, `chains/${chainId}/entries/${profile.userId}`);
+  setBusy(true);
+  setStatus('處理中…');
+  try {
+    if (mine) {
+      if (mine.guests === guests) {
+        setStatus('人數沒有變動');
+        return;
+      }
+      // 只改人數，保留原本的報名時間（排序不變）
+      await update(entryRef, { guests });
+    } else {
+      await set(entryRef, {
+        name: profile.displayName.slice(0, 50),
+        guests,
+        ts: serverTimestamp(),
+      });
+    }
+    await announce(mine ? '已更新人數' : '報名成功');
+  } catch (err) {
+    console.error(err);
+    setStatus(`失敗：${err.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function cancel() {
+  if (!confirm('確定要取消報名嗎？取消後重新報名會排到最後。')) return;
+  setBusy(true);
+  setStatus('處理中…');
+  try {
+    await remove(ref(db, `chains/${chainId}/entries/${profile.userId}`));
+    await announce('已取消報名');
+  } catch (err) {
+    console.error(err);
+    setStatus(`取消失敗：${err.message}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function shareList() {
+  setBusy(true);
+  try {
+    const r = await postChain(chainId);
+    setStatus({ sent: '已發送 ✅', shared: '已分享 ✅', cancelled: '已取消分享' }[r]);
   } catch (err) {
     console.error(err);
     setStatus(`分享失敗：${err.message}`);
+  } finally {
+    setBusy(false);
   }
 }
 
+function showChain() {
+  $('chainView').hidden = false;
+  setStatus('載入名單中…');
+  $('guests').replaceChildren(...Array.from({ length: MAX_GUESTS + 1 }, (_, n) => {
+    const o = document.createElement('option');
+    o.value = String(n);
+    o.textContent = n ? `帶 ${n} 位朋友` : '只有我自己';
+    return o;
+  }));
+  $('joinBtn').addEventListener('click', join);
+  $('cancelBtn').addEventListener('click', cancel);
+  $('shareListBtn').addEventListener('click', shareList);
+
+  let first = true;
+  onValue(ref(db, `chains/${chainId}`), (snap) => {
+    chain = snap.val();
+    if (!chain) {
+      $('chainView').hidden = true;
+      setStatus('找不到這個接龍，連結可能有誤');
+      return;
+    }
+    renderChain();
+    if (first) { setStatus(''); first = false; }
+  }, (err) => setStatus(`讀取名單失敗：${err.message}`));
+}
+
+// ---------- 啟動 ----------
 async function main() {
   try {
     await liff.init({ liffId: LIFF_ID });
@@ -118,16 +325,20 @@ async function main() {
     setStatus(`LIFF 初始化失敗：${err.message}`);
     return;
   }
-  // 在外部瀏覽器開啟時，需要先登入 LINE 才能分享
   if (!liff.isLoggedIn()) {
     liff.login({ redirectUri: location.href });
     return;
   }
-  document.getElementById('sendBtn').addEventListener('click', sendToCurrentChat);
-  document.getElementById('shareBtn').addEventListener('click', shareToFriends);
-  document.getElementById('sendBtn').disabled = false;
-  document.getElementById('shareBtn').disabled = false;
-  setStatus('準備好了');
+  try {
+    profile = await liff.getProfile();
+  } catch (err) {
+    setStatus('無法取得 LINE 個人資料，請確認 LIFF 有勾選 profile 權限');
+    return;
+  }
+  // liff.init 完成後網址才會還原成 ?e=xxx
+  chainId = new URLSearchParams(location.search).get('e');
+  if (chainId) showChain();
+  else showCreate();
 }
 
 main();
