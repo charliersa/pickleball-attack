@@ -1,11 +1,24 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>匹克球揪團</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 420px; margin: 40px auto; padding: 0 16px; }
+        button { display: block; width: 100%; padding: 14px; margin: 12px 0; font-size: 16px;
+                 border: 0; border-radius: 8px; background: #06C755; color: #fff; }
+        button:disabled { background: #ccc; }
+        #status { color: #666; text-align: center; }
+    </style>
 </head>
 <body>
-    <h1>Hello World</h1>
+    <h1>匹克球揪團</h1>
+    <button id="sendBtn" disabled>發送到目前聊天室</button>
+    <button id="shareBtn" disabled>分享給好友 / 群組</button>
+    <p id="status">載入中…</p>
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="index.js"></script>
 </body>
 </html>
