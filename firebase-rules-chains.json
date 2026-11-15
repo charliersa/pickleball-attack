@@ -9,6 +9,7 @@
         "date": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
         "time": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 30" },
         "place": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 40" },
+        "note": { ".validate": "newData.isString() && newData.val().length <= 200" },
         "capacity": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 200" },
         "createdAt": { ".validate": "newData.val() == now" },
         "creator": {

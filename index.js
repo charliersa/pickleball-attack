@@ -108,6 +108,7 @@ function buildChainFlex(c, id) {
           infoRow('日期', c.date),
           infoRow('時間', c.time),
           infoRow('地點', c.place),
+          ...(c.note ? [infoRow('備註', c.note)] : []),
           { type: 'separator', margin: 'lg' },
           ...rows,
         ],
@@ -128,19 +129,43 @@ function buildChainFlex(c, id) {
   };
 }
 
-// 把最新名單發出去。inChatOnly=true 時只在聊天室內自動發，不跳分享選單
+// 純文字版名單：可長按複製，通知列也看得到完整內容
+function buildChainText(c, id) {
+  const { confirmed, waitlist, used } = splitEntries(c);
+  const lines = [
+    `🏓【匹克球接龍】${c.title}`,
+    `📅 ${c.date}　${c.time}`,
+    `📍 ${c.place}`,
+  ];
+  if (c.note) lines.push(`📝 ${c.note}`);
+  lines.push('', `✅ 正取 ${used}/${c.capacity}`);
+  if (!confirmed.length) lines.push('（還沒有人報名）');
+  confirmed.forEach((e, i) => lines.push(`${i + 1}. ${personLabel(e)}`));
+  if (waitlist.length) {
+    lines.push('', `⏳ 候補 ${waitlist.length} 組`);
+    waitlist.forEach((e, i) => lines.push(`${i + 1}. ${personLabel(e)}`));
+  }
+  lines.push('', `👉 報名／修改：${chainUrl(id)}`);
+  let text = lines.join('\n');
+  // LINE 文字訊息上限 5000 字
+  if (text.length > 5000) text = `${text.slice(0, 4900)}\n…\n👉 ${chainUrl(id)}`;
+  return { type: 'text', text };
+}
+
+// 把最新名單發出去（Flex 卡片 + 文字訊息）。inChatOnly=true 時只在聊天室內自動發，不跳分享選單
 async function postChain(id, { inChatOnly = false } = {}) {
   const snap = await get(ref(db, `chains/${id}`));
-  const msg = buildChainFlex(snap.val(), id);
+  const c = snap.val();
+  const msg = [buildChainFlex(c, id), buildChainText(c, id)];
   if (canSendToChat()) {
-    await liff.sendMessages([msg]);
+    await liff.sendMessages(msg);
     return 'sent';
   }
   if (inChatOnly) return 'skipped';
   if (!liff.isApiAvailable('shareTargetPicker')) {
     throw new Error('此環境不支援分享，請從 LINE 聊天室開啟');
   }
-  const res = await liff.shareTargetPicker([msg]);
+  const res = await liff.shareTargetPicker(msg);
   return res ? 'shared' : 'cancelled';
 }
 
@@ -155,7 +180,7 @@ function showCreate() {
     setStatus('建立中…');
     try {
       const newRef = push(ref(db, 'chains'));
-      await set(newRef, {
+      const data = {
         title: $('fTitle').value.trim(),
         date: $('fDate').value.trim(),
         time: $('fTime').value.trim(),
@@ -163,7 +188,10 @@ function showCreate() {
         capacity: Number($('fCapacity').value),
         createdAt: serverTimestamp(),
         creator: { id: profile.userId, name: profile.displayName.slice(0, 50) },
-      });
+      };
+      const note = $('fNote').value.trim();
+      if (note) data.note = note; // 備註選填，沒填就不存
+      await set(newRef, data);
       const result = await postChain(newRef.key);
       // 切換成報名頁，讓團主也能直接報名
       history.replaceState(null, '', `?e=${newRef.key}`);
@@ -187,6 +215,8 @@ function renderChain() {
   const { confirmed, waitlist, used } = splitEntries(chain);
   $('cTitle').textContent = chain.title;
   $('cInfo').textContent = `${chain.date}　${chain.time}　${chain.place}`;
+  $('cNote').textContent = chain.note || '';
+  $('cNote').hidden = !chain.note;
   $('cConfirmedHead').textContent = `正取 ${used}/${chain.capacity}`;
   $('cWaitHead').textContent = `候補 ${waitlist.length} 組`;
   $('cWaitHead').hidden = !waitlist.length;
