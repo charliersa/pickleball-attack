@@ -1,6 +1,6 @@
 // LINE Flex Message 發送邏輯（LIFF 版，可直接跑在 GitHub Pages 這種純前端網站）
 // 到 LINE Developers → LINE Login channel → LIFF 建立 App 後，把 LIFF ID 填在這裡
-const LIFF_ID = 'YOUR_LIFF_ID';
+const LIFF_ID = '2012621364-BTCqnFfK';
 
 const statusEl = () => document.getElementById('status');
 function setStatus(msg) {
