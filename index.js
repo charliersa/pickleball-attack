@@ -177,15 +177,40 @@ function formatDate(value) {
   return `${m}/${d}（${weekday}）`;
 }
 
-function todayISO() {
+function toISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// 日期快選按鈕：今天起 14 天，點了直接填入日期欄
+function renderDateChips() {
   const t = new Date();
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  const buttons = Array.from({ length: 14 }, (_, i) => {
+    const iso = toISO(new Date(t.getFullYear(), t.getMonth(), t.getDate() + i));
+    const b = document.createElement('button');
+    b.type = 'button'; // 避免點了就送出表單
+    b.dataset.date = iso;
+    b.textContent = i === 0 ? `今天 ${formatDate(iso)}` : i === 1 ? `明天 ${formatDate(iso)}` : formatDate(iso);
+    b.addEventListener('click', () => {
+      $('fDate').value = iso;
+      highlightChip();
+    });
+    return b;
+  });
+  $('dateChips').replaceChildren(...buttons);
+  $('fDate').addEventListener('change', highlightChip);
+}
+
+function highlightChip() {
+  document.querySelectorAll('#dateChips button').forEach((b) => {
+    b.classList.toggle('on', b.dataset.date === $('fDate').value);
+  });
 }
 
 function showCreate() {
   $('createView').hidden = false;
   setStatus('');
-  $('fDate').min = todayISO(); // 不能選過去的日期
+  $('fDate').min = toISO(new Date()); // 不能選過去的日期
+  renderDateChips();
   $('createForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const btn = $('createBtn');
