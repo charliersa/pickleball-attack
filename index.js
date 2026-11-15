@@ -170,9 +170,22 @@ async function postChain(id, { inChatOnly = false } = {}) {
 }
 
 // ---------- 開團 ----------
+// 日期選擇器的值 '2026-11-22' → '11/22（日）'
+function formatDate(value) {
+  const [y, m, d] = value.split('-').map(Number);
+  const weekday = '日一二三四五六'[new Date(y, m - 1, d).getDay()];
+  return `${m}/${d}（${weekday}）`;
+}
+
+function todayISO() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
 function showCreate() {
   $('createView').hidden = false;
   setStatus('');
+  $('fDate').min = todayISO(); // 不能選過去的日期
   $('createForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const btn = $('createBtn');
@@ -182,7 +195,7 @@ function showCreate() {
       const newRef = push(ref(db, 'chains'));
       const data = {
         title: $('fTitle').value.trim(),
-        date: $('fDate').value.trim(),
+        date: formatDate($('fDate').value),
         time: $('fTime').value.trim(),
         place: $('fPlace').value.trim(),
         capacity: Number($('fCapacity').value),
