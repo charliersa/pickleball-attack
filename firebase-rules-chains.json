@@ -30,7 +30,10 @@
             ".write": true,
             ".validate": "newData.hasChildren(['name', 'guests', 'ts', 'court'])",
             "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
-            "guests": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3 && newData.val() % 1 == 0" },
+            "guests": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 7 && newData.val() % 1 == 0" },
+            "friends": {
+              "$i": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" }
+            },
             "court": { ".validate": "(newData.val() == '6' || newData.val() == '7') && (!data.exists() || newData.val() == data.val())" },
             "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
             "$other": { ".validate": false }

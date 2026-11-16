@@ -9,7 +9,8 @@ import {
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
 const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebasedatabase.app';
-const MAX_GUESTS = 3;     // 每人最多帶幾位朋友（要跟資料庫規則一致）
+const MAX_GUESTS = 7;     // 每人最多帶幾位朋友（一面 8 人扣掉自己；要跟資料庫規則一致）
+const FRIEND_NAME_MAX = 20;
 const FLEX_MAX_ROWS = 40; // Flex 卡片最多列幾個名字，避免超過 LINE 訊息大小限制
 const COURT_SIZE = 8;     // 每面上限人數
 const DEFAULT_PRICE = 180;
@@ -134,8 +135,34 @@ function courtData(c, no, members) {
   return { ...COURTS[no], members: list, active, cap, ...s, total: active + s.used, left: cap - s.used };
 }
 
+// 朋友名字（選填）；Firebase 會把陣列存成物件，讀回來統一轉成陣列
+function friendList(e) {
+  return Object.values(e?.friends || {}).filter(Boolean);
+}
+
 function personLabel(e) {
-  return e.guests ? `${e.name} +${e.guests}` : e.name;
+  if (!e.guests) return e.name;
+  const names = friendList(e);
+  return `${e.name} +${e.guests}${names.length ? `（${names.join('、')}）` : ''}`;
+}
+
+// 依同行人數產生朋友名字輸入框；已輸入的名字在增減人數時保留
+function renderFriendInputs(values) {
+  const n = Number($('guests').value);
+  const keep = values ?? [...document.querySelectorAll('#friendNames input')].map((i) => i.value);
+  $('friendNames').replaceChildren(...Array.from({ length: n }, (_, i) => {
+    const input = el('input');
+    input.maxLength = FRIEND_NAME_MAX;
+    input.placeholder = `朋友 ${i + 1} 的名字（選填）`;
+    input.value = keep[i] || '';
+    input.style.marginTop = '8px';
+    return input;
+  }));
+}
+
+function readFriendInputs() {
+  const names = [...document.querySelectorAll('#friendNames input')].map((i) => i.value.trim().slice(0, FRIEND_NAME_MAX));
+  return names.some(Boolean) ? names.map((s) => s || '朋友') : null; // 都沒填就不存名字
 }
 
 function memberLine(cd) {
@@ -437,9 +464,11 @@ function renderChain() {
 
   // 自己的同行人數有變（例如在別支手機改過）才同步下拉選單，避免蓋掉正在選的值
   const g = mine ? mine.guests : 0;
-  if (g !== lastMyGuests) {
+  const key = JSON.stringify([g, friendList(mine)]);
+  if (key !== lastMyGuests) {
     $('guests').value = String(g);
-    lastMyGuests = g;
+    renderFriendInputs(friendList(mine));
+    lastMyGuests = key;
   }
   updateSingleUI(cd);
 
@@ -510,13 +539,14 @@ async function announce(doneMsg, before) {
 async function join() {
   const no = selCourt;
   const guests = Number($('guests').value);
+  const friends = readFriendInputs();
   const mine = myEntry();
   if (mine && mine.court !== no) {
     setStatus(`你已報名 ${mine.court}號場，請先取消再改報`);
     return;
   }
-  if (mine && mine.guests === guests) {
-    setStatus('人數沒有變動');
+  if (mine && mine.guests === guests && JSON.stringify(friendList(mine)) === JSON.stringify(friends || [])) {
+    setStatus('同行人數和名字都沒有變動');
     return;
   }
   const entryRef = ref(db, `chains/${chainId}/entries/${profile.userId}`);
@@ -525,17 +555,19 @@ async function join() {
   setStatus('處理中…');
   try {
     if (mine) {
-      // 只改人數，保留原本的報名時間（排序不變）
-      await update(entryRef, { guests });
+      // 只改人數與朋友名字，保留原本的報名時間（排序不變）
+      await update(entryRef, { guests, friends });
     } else {
-      await set(entryRef, {
+      const data = {
         name: profile.displayName.slice(0, 50),
         guests,
         court: no,
         ts: serverTimestamp(),
-      });
+      };
+      if (friends) data.friends = friends;
+      await set(entryRef, data);
     }
-    await announce(mine ? '已更新人數' : '報名成功', before);
+    await announce(mine ? '已更新同行朋友' : '報名成功', before);
   } catch (err) {
     console.error(err);
     setStatus(`失敗：${errText(err)}`);
@@ -552,6 +584,7 @@ async function cancel() {
   try {
     await remove(ref(db, `chains/${chainId}/entries/${profile.userId}`));
     $('guests').value = '0';
+    renderFriendInputs([]);
     await announce('已取消報名', before);
   } catch (err) {
     console.error(err);
@@ -654,7 +687,7 @@ function bindEvents() {
     o.value = String(n);
     return o;
   }));
-  $('guests').addEventListener('change', () => updateSingleUI());
+  $('guests').addEventListener('change', () => { renderFriendInputs(); updateSingleUI(); });
   $('joinBtn').addEventListener('click', join);
   $('cancelBtn').addEventListener('click', cancel);
   $('leaveBtn').addEventListener('click', toggleLeave);
