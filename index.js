@@ -401,16 +401,27 @@ function myMember() {
   return roster[profile.userId] || null;
 }
 
-function myEntry() {
-  return chain?.entries?.[profile.userId] || null;
+// 每人每面場各一筆報名：key 是「LINE ID_場地」；舊資料 key 是 LINE ID，靠 court 欄位區分
+function entryKey(no) {
+  const uid = profile.userId;
+  return chain?.entries?.[uid]?.court === no ? uid : `${uid}_${no}`;
+}
+
+function myEntry(no = selCourt) {
+  return chain?.entries?.[entryKey(no)] || null;
+}
+
+function isMe(e) {
+  return e.uid === profile.userId || e.uid.startsWith(`${profile.userId}_`);
 }
 
 function renderChain() {
   if (!chain) return;
   const uid = profile.userId;
   const me = myMember();
+  if (!selCourt) selCourt = me?.court || COURT_NOS.find((no) => myEntry(no)) || '6';
   const mine = myEntry();
-  if (!selCourt) selCourt = me?.court || mine?.court || '6';
+  const memberHere = !!me && selCourt === me.court; // 會員看自己的場：請假；看另一面場：可以單次報名
 
   const courts = Object.fromEntries(COURT_NOS.map((no) => [no, courtData(chain, no, roster)]));
   const cd = courts[selCourt];
@@ -438,9 +449,15 @@ function renderChain() {
 
   // 我的狀態
   const onLeave = !!chain.leaves?.[uid];
-  if (me) {
-    $('myState').textContent = selCourt !== me.court ? `你的保留名額在 ${me.court}號場，可切換查看`
-      : onLeave ? '你本週請假，名額已釋出給單次接龍'
+  // 單次報名狀態（兩面場可以各報一筆）
+  const singleLines = COURT_NOS.filter((no) => myEntry(no)).map((no) => {
+    const key = entryKey(no);
+    const ci = courts[no].confirmed.findIndex((e) => e.uid === key);
+    const wi = courts[no].waitlist.findIndex((e) => e.uid === key);
+    return ci >= 0 ? `你是 ${no}號場 單次正取第 ${ci + 1} 位 ✅` : `你在 ${no}號場 候補第 ${wi + 1} 位，有人取消會自動遞補`;
+  });
+  if (memberHere) {
+    $('myState').textContent = onLeave ? '你本週請假，名額已釋出給單次接龍'
         : `你是 ${me.court}號場${me.plan}會員，本週名額已保留 ✅`;
     let info = me.plan === '季繳' ? '季繳 1,920 元／12 場' : '月繳 170 元／場';
     if (me.plan === '月繳' && chain.week) {
@@ -452,19 +469,15 @@ function renderChain() {
     $('leaveBtn').textContent = onLeave ? '取消請假，恢復保留名額' : '本週請假（名額釋出給單次）';
     $('leaveBtn').className = onLeave ? '' : 'danger';
   } else {
-    const mc = mine ? courts[mine.court] : null;
-    const ci = mc ? mc.confirmed.findIndex((e) => e.uid === uid) : -1;
-    const wi = mc ? mc.waitlist.findIndex((e) => e.uid === uid) : -1;
-    $('myState').textContent = ci >= 0 ? `你是 ${mine.court}號場 單次正取第 ${ci + 1} 位 ✅`
-      : wi >= 0 ? `你在 ${mine.court}號場 候補第 ${wi + 1} 位，有人取消會自動遞補`
-        : '你還沒報名';
+    const lines = me ? [`你的保留名額在 ${me.court}號場；也可以在這面場單次報名`, ...singleLines] : singleLines;
+    $('myState').textContent = lines.length ? lines.join('\n') : '你還沒報名';
   }
-  $('memberBox').hidden = !me;
-  $('singleBox').hidden = !!me;
+  $('memberBox').hidden = !memberHere;
+  $('singleBox').hidden = memberHere;
 
   // 自己的同行人數有變（例如在別支手機改過）才同步下拉選單，避免蓋掉正在選的值
   const g = mine ? mine.guests : 0;
-  const key = JSON.stringify([g, friendList(mine)]);
+  const key = JSON.stringify([selCourt, g, friendList(mine)]);
   if (key !== lastMyGuests) {
     $('guests').value = String(g);
     renderFriendInputs(friendList(mine));
@@ -486,7 +499,7 @@ function renderChain() {
   $('confirmedHead').textContent = `單次正取 ${cd.used}/${cd.cap}`;
   $('emptyHint').hidden = cd.confirmed.length > 0;
   const fill = (box, list) => box.replaceChildren(...list.map((e, i) =>
-    el('div', `row${e.uid === uid ? ' me' : ''}`, el('span', 'n', `${i + 1}.`), el('span', '', personLabel(e)))));
+    el('div', `row${isMe(e) ? ' me' : ''}`, el('span', 'n', `${i + 1}.`), el('span', '', personLabel(e)))));
   fill($('confirmedRows'), cd.confirmed);
   fill($('waitRows'), cd.waitlist);
   $('waitHead').textContent = `候補 ${cd.waitlist.length} 組`;
@@ -499,12 +512,10 @@ function updateSingleUI(cd = courtData(chain, selCourt, roster)) {
   const heads = 1 + Number($('guests').value);
   const price = priceOf(chain);
   $('feeLine').replaceChildren(`單次 ${price} 元 × ${heads} 人 = `, el('b', '', `${price * heads} 元`), '（現場收費）');
-  const otherCourt = !!mine && mine.court !== selCourt;
-  $('joinBtn').textContent = otherCourt ? `你已報名 ${mine.court}號場`
-    : mine ? '更新同行人數'
+  $('joinBtn').textContent = mine ? `更新 ${selCourt}號場同行人數`
       : !cd.waitlist.length && cd.left >= heads ? `報名 ${selCourt}號場` : `報名 ${selCourt}號場（進候補）`;
-  $('joinBtn').disabled = otherCourt;
-  $('cancelBtn').hidden = !mine || otherCourt;
+  $('cancelBtn').textContent = `取消 ${selCourt}號場報名`;
+  $('cancelBtn').hidden = !mine;
 }
 
 function setBusy(on) {
@@ -540,16 +551,12 @@ async function join() {
   const no = selCourt;
   const guests = Number($('guests').value);
   const friends = readFriendInputs();
-  const mine = myEntry();
-  if (mine && mine.court !== no) {
-    setStatus(`你已報名 ${mine.court}號場，請先取消再改報`);
-    return;
-  }
+  const mine = myEntry(no);
   if (mine && mine.guests === guests && JSON.stringify(friendList(mine)) === JSON.stringify(friends || [])) {
     setStatus('同行人數和名字都沒有變動');
     return;
   }
-  const entryRef = ref(db, `chains/${chainId}/entries/${profile.userId}`);
+  const entryRef = ref(db, `chains/${chainId}/entries/${entryKey(no)}`);
   const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
@@ -567,7 +574,7 @@ async function join() {
       if (friends) data.friends = friends;
       await set(entryRef, data);
     }
-    await announce(mine ? '已更新同行朋友' : '報名成功', before);
+    await announce(mine ? `已更新 ${no}號場同行朋友` : `${no}號場報名成功`, before);
   } catch (err) {
     console.error(err);
     setStatus(`失敗：${errText(err)}`);
@@ -577,15 +584,16 @@ async function join() {
 }
 
 async function cancel() {
-  if (!confirm('確定要取消報名嗎？取消後重新報名會排到最後。')) return;
+  const no = selCourt;
+  if (!confirm(`確定要取消 ${no}號場報名嗎？取消後重新報名會排到最後。`)) return;
   const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
   try {
-    await remove(ref(db, `chains/${chainId}/entries/${profile.userId}`));
+    await remove(ref(db, `chains/${chainId}/entries/${entryKey(no)}`));
     $('guests').value = '0';
     renderFriendInputs([]);
-    await announce('已取消報名', before);
+    await announce(`已取消 ${no}號場報名`, before);
   } catch (err) {
     console.error(err);
     setStatus(`取消失敗：${errText(err)}`);
