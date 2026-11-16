@@ -345,12 +345,17 @@ async function onCreate(ev) {
     const note = $('fNote').value.trim();
     if (note) data.note = note; // 備註選填，沒填就不存
     await set(newRef, data);
-    const result = await postChain(newRef.key);
-    // 切換成報名頁，讓團主也能直接報名
+    // 接龍已存好：不論發送成功與否都切換成報名頁，避免重按造成重複開團
     history.replaceState(null, '', `?e=${newRef.key}`);
     openChain(newRef.key);
     showView('chainView');
-    setStatus(result === 'cancelled' ? '接龍已建立，可按「分享名單」發到群組' : '接龍已建立並發送 ✅');
+    try {
+      const result = await postChain(newRef.key);
+      setStatus(result === 'cancelled' ? '接龍已建立，可按「分享名單」發到群組' : '接龍已建立並發送 ✅');
+    } catch (err) {
+      console.error(err);
+      setStatus(`接龍已建立，但發送到群組失敗：${err.message}（可按「分享名單」重試）`);
+    }
   } catch (err) {
     console.error(err);
     setStatus(`建立失敗：${err.message}`);
