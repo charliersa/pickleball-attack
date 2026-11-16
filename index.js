@@ -51,6 +51,11 @@ let selCourt = null;  // 報名頁目前查看的場地
 let unsubChain = null;
 let lastMyGuests = null;
 
+// LIFF 的錯誤有時 message 是空的，改顯示錯誤代碼
+function errText(err) {
+  return err?.message || err?.code || String(err);
+}
+
 function setStatus(msg) {
   $('status').textContent = msg;
 }
@@ -354,11 +359,11 @@ async function onCreate(ev) {
       setStatus(result === 'cancelled' ? '接龍已建立，可按「分享名單」發到群組' : '接龍已建立並發送 ✅');
     } catch (err) {
       console.error(err);
-      setStatus(`接龍已建立，但發送到群組失敗：${err.message}（可按「分享名單」重試）`);
+      setStatus(`接龍已建立，但發送到群組失敗：${errText(err)}（可按「分享名單」重試）`);
     }
   } catch (err) {
     console.error(err);
-    setStatus(`建立失敗：${err.message}`);
+    setStatus(`建立失敗：${errText(err)}`);
   } finally {
     btn.disabled = false;
   }
@@ -498,7 +503,7 @@ async function announce(doneMsg, before) {
     setStatus(r === 'sent' ? `${doneMsg}，已發送最新名單到聊天室` : doneMsg);
   } catch (err) {
     console.error(err);
-    setStatus(`${doneMsg}，但發送名單失敗：${err.message}`);
+    setStatus(`${doneMsg}，但發送名單失敗：${errText(err)}`);
   }
 }
 
@@ -533,7 +538,7 @@ async function join() {
     await announce(mine ? '已更新人數' : '報名成功', before);
   } catch (err) {
     console.error(err);
-    setStatus(`失敗：${err.message}`);
+    setStatus(`失敗：${errText(err)}`);
   } finally {
     setBusy(false);
   }
@@ -550,7 +555,7 @@ async function cancel() {
     await announce('已取消報名', before);
   } catch (err) {
     console.error(err);
-    setStatus(`取消失敗：${err.message}`);
+    setStatus(`取消失敗：${errText(err)}`);
   } finally {
     setBusy(false);
   }
@@ -569,7 +574,7 @@ async function toggleLeave() {
     await announce(on ? '已請假，名額釋出給單次接龍' : '已取消請假', before);
   } catch (err) {
     console.error(err);
-    setStatus(`失敗：${err.message}`);
+    setStatus(`失敗：${errText(err)}`);
   } finally {
     setBusy(false);
   }
@@ -582,8 +587,8 @@ async function shareList() {
     setStatus({ sent: '已發送 ✅', shared: '已分享 ✅', cancelled: '已取消分享' }[r]);
   } catch (err) {
     console.error(err);
-    setStatus(`分享失敗：${err.message}`);
-    alert(`分享失敗：${err.message}`); // 狀態列在頁面最下面容易沒看到，跳窗提醒
+    setStatus(`分享失敗：${errText(err)}`);
+    alert(`分享失敗：${errText(err)}`); // 狀態列在頁面最下面容易沒看到，跳窗提醒
   } finally {
     setBusy(false);
   }
@@ -612,7 +617,7 @@ function openChain(id) {
       if ($('status').textContent === '載入名單中…') setStatus('');
       first = false;
     }
-  }, (err) => setStatus(`讀取名單失敗：${err.message}`));
+  }, (err) => setStatus(`讀取名單失敗：${errText(err)}`));
 }
 
 // ---------- 團資訊 ----------
@@ -623,6 +628,18 @@ function renderInfo() {
   total.style.border = '0';
   $('monthGrid').replaceChildren(...cells, total);
   $('myId').textContent = profile.userId;
+}
+
+// 不是在 LINE App 裡開（例如被丟到 Chrome / Safari）就無法發到群組，提示改用 LINE 開啟
+function showOpenInLine() {
+  if (liff.isInClient()) return;
+  const e = new URLSearchParams(location.search).get('e');
+  const a = el('a', '', '在 LINE 中開啟');
+  a.href = `https://line.me/R/app/${LIFF_ID}${e ? `?e=${encodeURIComponent(e)}` : ''}`;
+  a.style.cssText = 'display:block;text-align:center;margin-top:8px;padding:10px;border-radius:8px;background:#06C755;color:#fff;text-decoration:none';
+  const box = el('div', 'note', '⚠️ 目前不是在 LINE 裡開啟，報名後無法自動發送名單到群組。請在 LINE 群組點連結開啟，或按下方按鈕。', a);
+  box.style.margin = '12px 0 0';
+  $('tabs').after(box);
 }
 
 // ---------- 啟動 ----------
@@ -665,7 +682,7 @@ async function main() {
       location.replace(location.pathname + (e ? `?e=${encodeURIComponent(e)}` : ''));
       return;
     }
-    setStatus(`LIFF 初始化失敗：${err.message}（請從 LINE 聊天室裡開啟連結）`);
+    setStatus(`LIFF 初始化失敗：${errText(err)}（請從 LINE 聊天室裡開啟連結）`);
     return;
   }
   sessionStorage.removeItem('liffRetried');
@@ -681,6 +698,7 @@ async function main() {
   }
 
   bindEvents();
+  showOpenInLine();
   $('fDate').min = toISO(new Date()); // 不能選過去的日期
   renderDateChips();
   renderCreateCourts();
