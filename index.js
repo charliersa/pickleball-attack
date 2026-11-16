@@ -50,7 +50,8 @@ let chain = null;     // 目前接龍的即時資料
 let roster = {};      // 會員名單 pkclub/members/{LINE userId}: { name, plan, court }
 let selCourt = null;  // 報名頁目前查看的場地
 let unsubChain = null;
-let lastMyGuests = null;
+let form = null;      // 報名表內容（自己與朋友各選哪面場）
+let formKey = null;   // 上次從資料庫同步表單時，我的報名內容
 
 // LIFF 的錯誤有時 message 是空的，改顯示錯誤代碼
 function errText(err) {
@@ -152,38 +153,6 @@ function personLabel(e) {
   }
   if (!e.guests) return e.name;
   return `${e.name} +${e.guests}${names.length ? `（${names.join('、')}）` : ''}`;
-}
-
-// 同行人數下拉選單：自己有打「只有我自己／帶 N 位」，自己不打「幫 N 位朋友報名」
-function renderGuestOptions(self, value) {
-  const from = self ? 0 : 1;
-  $('guests').replaceChildren(...Array.from({ length: MAX_GUESTS + 1 - from }, (_, i) => {
-    const n = i + from;
-    const o = el('option', '', self ? (n ? `帶 ${n} 位朋友` : '只有我自己') : `幫 ${n} 位朋友報名`);
-    o.value = String(n);
-    return o;
-  }));
-  $('guests').value = String(Math.max(from, value));
-  $('guestsLabel').textContent = self ? '同行人數' : '幫幾位朋友報名';
-}
-
-// 依同行人數產生朋友名字輸入框；已輸入的名字在增減人數時保留
-function renderFriendInputs(values) {
-  const n = Number($('guests').value);
-  const keep = values ?? [...document.querySelectorAll('#friendNames input')].map((i) => i.value);
-  $('friendNames').replaceChildren(...Array.from({ length: n }, (_, i) => {
-    const input = el('input');
-    input.maxLength = FRIEND_NAME_MAX;
-    input.placeholder = `朋友 ${i + 1} 的名字（選填）`;
-    input.value = keep[i] || '';
-    input.style.marginTop = '8px';
-    return input;
-  }));
-}
-
-function readFriendInputs() {
-  const names = [...document.querySelectorAll('#friendNames input')].map((i) => i.value.trim().slice(0, FRIEND_NAME_MAX));
-  return names.some(Boolean) ? names.map((s) => s || '朋友') : null; // 都沒填就不存名字
 }
 
 function memberLine(cd) {
@@ -441,8 +410,6 @@ function renderChain() {
   const uid = profile.userId;
   const me = myMember();
   if (!selCourt) selCourt = me?.court || COURT_NOS.find((no) => myEntry(no)) || '6';
-  const mine = myEntry();
-  const memberHere = !!me && selCourt === me.court; // 會員看自己的場：請假；看另一面場：可以單次報名
 
   const courts = Object.fromEntries(COURT_NOS.map((no) => [no, courtData(chain, no, roster)]));
   const cd = courts[selCourt];
@@ -478,9 +445,10 @@ function renderChain() {
     const who = myEntry(no).self === false ? '你幫朋友報的' : '你';
     return ci >= 0 ? `${who} ${no}號場 單次正取第 ${ci + 1} 組 ✅` : `${who} ${no}號場 候補第 ${wi + 1} 組，有人取消會自動遞補`;
   });
-  if (memberHere) {
-    $('myState').textContent = onLeave ? '你本週請假，名額已釋出給單次接龍'
-        : `你是 ${me.court}號場${me.plan}會員，本週名額已保留 ✅`;
+  const lines = [...singleLines];
+  if (me) {
+    lines.unshift(onLeave ? `你本週請假，${me.court}號場會員名額已釋出給單次接龍`
+      : `你是 ${me.court}號場${me.plan}會員，本週名額已保留 ✅`);
     let info = me.plan === '季繳' ? '季繳 1,920 元／12 場' : '月繳 170 元／場';
     if (me.plan === '月繳' && chain.week) {
       const d = SEASON[chain.week - 1];
@@ -490,24 +458,17 @@ function renderChain() {
     $('memberInfo').textContent = info;
     $('leaveBtn').textContent = onLeave ? '取消請假，恢復保留名額' : '本週請假（名額釋出給單次）';
     $('leaveBtn').className = onLeave ? '' : 'danger';
-  } else {
-    const lines = me ? [`你的保留名額在 ${me.court}號場；也可以在這面場單次報名`, ...singleLines] : singleLines;
-    $('myState').textContent = lines.length ? lines.join('\n') : '你還沒報名';
   }
-  $('memberBox').hidden = !memberHere;
-  $('singleBox').hidden = memberHere;
+  $('myState').textContent = lines.length ? lines.join('\n') : '你還沒報名';
+  $('memberBox').hidden = !me;
 
-  // 自己的同行人數有變（例如在別支手機改過）才同步下拉選單，避免蓋掉正在選的值
-  const g = mine ? mine.guests : 0;
-  const self = mine?.self !== false;
-  const key = JSON.stringify([selCourt, self, g, friendList(mine)]);
-  if (key !== lastMyGuests) {
-    $('selfPlay').checked = self;
-    renderGuestOptions(self, g);
-    renderFriendInputs(friendList(mine));
-    lastMyGuests = key;
+  // 我的報名在資料庫有變（例如在別支手機改過）才重設表單，避免蓋掉正在填的內容
+  const key = JSON.stringify(COURT_NOS.map((no) => myEntry(no)));
+  if (key !== formKey) {
+    form = formFromEntries();
+    formKey = key;
   }
-  updateSingleUI(cd);
+  renderSignupForm();
 
   // 名單
   $('listTitle').textContent = `${selCourt}號場名單`;
@@ -530,20 +491,112 @@ function renderChain() {
   $('waitHead').hidden = !cd.waitlist.length;
 }
 
-// 單次報名區：費用與按鈕文字跟著同行人數、場地變動
-function updateSingleUI(cd = courtData(chain, selCourt, roster)) {
-  const mine = myEntry();
-  const heads = ($('selfPlay').checked ? 1 : 0) + Number($('guests').value);
+// ---------- 報名表 ----------
+// form = { self: { 6: bool, 7: bool }, friends: [{ name, court }] }
+// 送出時每面場各存成一筆報名：自己有沒有打 + 這面場的朋友
+function formFromEntries() {
+  const f = { self: {}, friends: [] };
+  for (const no of COURT_NOS) {
+    const e = myEntry(no);
+    f.self[no] = !!e && e.self !== false;
+    const names = friendList(e);
+    for (let i = 0; i < (e?.guests || 0); i++) f.friends.push({ name: names[i] === '朋友' ? '' : names[i] || '', court: no });
+  }
+  return f;
+}
+
+// 依表單算出某面場要存的報名；沒人就回傳 null（代表刪除）
+function desiredEntry(no) {
+  const fr = form.friends.filter((f) => f.court === no);
+  if (!form.self[no] && !fr.length) return null;
+  const names = fr.map((f) => f.name.trim().slice(0, FRIEND_NAME_MAX));
+  const e = { name: profile.displayName.slice(0, 50), guests: fr.length, court: no };
+  if (names.some(Boolean)) e.friends = names.map((s) => s || '朋友'); // 都沒填就不存名字
+  if (!form.self[no]) e.self = false;
+  return e;
+}
+
+function sameEntry(a, b) {
+  return a.guests === (b.guests || 0) && (a.self !== false) === (b.self !== false)
+    && JSON.stringify(friendList(a)) === JSON.stringify(friendList(b));
+}
+
+// 預覽：照表單送出後，每面場會在正取還是候補
+function previewPlacement() {
+  const entries = { ...(chain.entries || {}) };
+  for (const no of COURT_NOS) {
+    const key = entryKey(no);
+    const d = desiredEntry(no);
+    const ex = myEntry(no);
+    if (!d) delete entries[key];
+    else entries[key] = { ...d, ts: ex ? ex.ts : Number.MAX_SAFE_INTEGER }; // 新報名排最後
+  }
+  const sim = { ...chain, entries };
+  return Object.fromEntries(COURT_NOS.map((no) => {
+    const cd = courtData(sim, no, roster);
+    return [no, cd.confirmed.some((e) => e.uid === entryKey(no)) ? '正取' : '候補'];
+  }));
+}
+
+function segButton(text, on, onClick, disabled = false) {
+  const b = el('button', on ? 'on' : '', text);
+  b.type = 'button';
+  b.disabled = disabled;
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderSignupForm() {
+  const me = myMember();
+  const selfRow = el('div', 'srow', el('span', 'who', `${profile.displayName}（你）`),
+    el('div', 'seg', ...COURT_NOS.map((no) => (me?.court === no
+      ? segButton(`${no}號 會員`, false, () => {}, true)
+      : segButton(`${no}號`, form.self[no], () => { form.self[no] = !form.self[no]; renderSignupForm(); })))));
+
+  const friendRows = form.friends.map((f, i) => {
+    const input = el('input', 'who');
+    input.maxLength = FRIEND_NAME_MAX;
+    input.placeholder = `朋友 ${i + 1} 名字`;
+    input.value = f.name;
+    input.addEventListener('input', () => { f.name = input.value; });
+    const del = el('button', 'del', '✕');
+    del.type = 'button';
+    del.setAttribute('aria-label', '移除這位朋友');
+    del.addEventListener('click', () => { form.friends.splice(i, 1); renderSignupForm(); });
+    return el('div', 'srow', input,
+      el('div', 'seg', ...COURT_NOS.map((no) => segButton(`${no}號`, f.court === no, () => { f.court = no; renderSignupForm(); }))),
+      del);
+  });
+  $('signupRows').replaceChildren(selfRow, ...friendRows);
+  $('addFriendBtn').hidden = form.friends.length >= MAX_GUESTS;
+
+  // 摘要：每面場人數、正取或候補、費用
+  const place = previewPlacement();
   const price = priceOf(chain);
-  $('feeLine').replaceChildren(`單次 ${price} 元 × ${heads} 人 = `, el('b', '', `${price * heads} 元`), '（現場收費）');
-  $('joinBtn').textContent = mine ? `更新 ${selCourt}號場同行人數`
-      : !cd.waitlist.length && cd.left >= heads ? `報名 ${selCourt}號場` : `報名 ${selCourt}號場（進候補）`;
-  $('cancelBtn').textContent = `取消 ${selCourt}號場報名`;
-  $('cancelBtn').hidden = !mine;
+  let heads = 0;
+  const lines = COURT_NOS.map((no) => {
+    const n = (form.self[no] ? 1 : 0) + form.friends.filter((f) => f.court === no).length;
+    heads += n;
+    return n ? `${no}號場 ${n} 人 → ${place[no]}` : null;
+  }).filter(Boolean);
+  lines.push(heads ? `單次 ${price} 元 × ${heads} 人 = ${price * heads} 元（現場收費）` : '請點選自己或朋友要打的場地');
+  $('signupSummary').textContent = lines.join('\n');
+
+  const hasMine = COURT_NOS.some((no) => myEntry(no));
+  $('joinBtn').textContent = hasMine ? '更新報名' : '送出報名';
+  $('joinBtn').disabled = !heads && !hasMine;
+  $('cancelBtn').hidden = !hasMine;
+}
+
+function addFriend() {
+  if (form.friends.length >= MAX_GUESTS) return;
+  form.friends.push({ name: '', court: selCourt });
+  renderSignupForm();
+  document.querySelector('#signupRows .srow:last-child input')?.focus();
 }
 
 function setBusy(on) {
-  ['joinBtn', 'cancelBtn', 'leaveBtn', 'shareListBtn'].forEach((id) => { $(id).disabled = on; });
+  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'leaveBtn', 'shareListBtn'].forEach((id) => { $(id).disabled = on; });
   if (!on) renderChain(); // 還原 joinBtn 的 disabled 狀態
 }
 
@@ -571,41 +624,15 @@ async function announce(doneMsg, before) {
   }
 }
 
-async function join() {
-  const no = selCourt;
-  const guests = Number($('guests').value);
-  const friends = readFriendInputs();
-  const self = $('selfPlay').checked;
-  const mine = myEntry(no);
-  if (!self && guests < 1) {
-    setStatus('不是自己打的話，至少要幫 1 位朋友報名');
-    return;
-  }
-  if (mine && mine.guests === guests && (mine.self !== false) === self
-    && JSON.stringify(friendList(mine)) === JSON.stringify(friends || [])) {
-    setStatus('報名內容沒有變動');
-    return;
-  }
-  const entryRef = ref(db, `chains/${chainId}/entries/${entryKey(no)}`);
+// 一次送出兩面場的報名（多路徑更新，兩面場同時成功或同時失敗）
+async function writeMyEntries(changes, doneMsg) {
   const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
   try {
-    if (mine) {
-      // 只改人數與朋友名字，保留原本的報名時間（排序不變）
-      await update(entryRef, { guests, friends, self: self ? null : false });
-    } else {
-      const data = {
-        name: profile.displayName.slice(0, 50),
-        guests,
-        court: no,
-        ts: serverTimestamp(),
-      };
-      if (friends) data.friends = friends;
-      if (!self) data.self = false; // 只幫朋友報，自己不佔名額
-      await set(entryRef, data);
-    }
-    await announce(mine ? `已更新 ${no}號場同行朋友` : `${no}號場報名成功`, before);
+    await update(ref(db, `chains/${chainId}/entries`), changes);
+    formKey = null; // 送出後以資料庫為準重設表單
+    await announce(doneMsg, before);
   } catch (err) {
     console.error(err);
     setStatus(`失敗：${errText(err)}`);
@@ -614,24 +641,38 @@ async function join() {
   }
 }
 
-async function cancel() {
-  const no = selCourt;
-  if (!confirm(`確定要取消 ${no}號場報名嗎？取消後重新報名會排到最後。`)) return;
-  const before = confirmedSig(chain, roster);
-  setBusy(true);
-  setStatus('處理中…');
-  try {
-    await remove(ref(db, `chains/${chainId}/entries/${entryKey(no)}`));
-    $('selfPlay').checked = true;
-    renderGuestOptions(true, 0);
-    renderFriendInputs([]);
-    await announce(`已取消 ${no}號場報名`, before);
-  } catch (err) {
-    console.error(err);
-    setStatus(`取消失敗：${errText(err)}`);
-  } finally {
-    setBusy(false);
+async function join() {
+  const changes = {};
+  const done = [];
+  let removing = false;
+  for (const no of COURT_NOS) {
+    const d = desiredEntry(no);
+    const ex = myEntry(no);
+    if (!d && !ex) continue;
+    if (d && ex && sameEntry(d, ex)) continue;
+    if (!d) {
+      removing = true;
+      changes[entryKey(no)] = null;
+      done.push(`取消 ${no}號場`);
+    } else {
+      // 已報過的保留原本報名時間（排序不變）；新報名用伺服器時間
+      changes[entryKey(no)] = { ...d, ts: ex ? ex.ts : serverTimestamp() };
+      done.push(ex ? `更新 ${no}號場` : `報名 ${no}號場`);
+    }
   }
+  if (!done.length) {
+    setStatus('報名內容沒有變動');
+    return;
+  }
+  if (removing && !confirm('有一面場的報名會被取消，取消後重新報名會排到最後。確定送出嗎？')) return;
+  await writeMyEntries(changes, `已${done.join('、')}`);
+}
+
+async function cancel() {
+  if (!confirm('確定要取消你和朋友的全部報名嗎？取消後重新報名會排到最後。')) return;
+  const changes = {};
+  for (const no of COURT_NOS) if (myEntry(no)) changes[entryKey(no)] = null;
+  await writeMyEntries(changes, '已取消全部報名');
 }
 
 async function toggleLeave() {
@@ -672,7 +713,8 @@ function openChain(id) {
   chainId = id;
   chain = null;
   selCourt = null;
-  lastMyGuests = null;
+  form = null;
+  formKey = null;
   document.querySelector('#tabs [data-view="chainView"]').hidden = false;
   setStatus('載入名單中…');
 
@@ -722,13 +764,7 @@ function bindEvents() {
   });
   $('createForm').addEventListener('submit', onCreate);
   $('fDate').addEventListener('change', highlightChip);
-  renderGuestOptions(true, 0);
-  $('selfPlay').addEventListener('change', () => {
-    renderGuestOptions($('selfPlay').checked, Number($('guests').value));
-    renderFriendInputs();
-    updateSingleUI();
-  });
-  $('guests').addEventListener('change', () => { renderFriendInputs(); updateSingleUI(); });
+  $('addFriendBtn').addEventListener('click', addFriend);
   $('joinBtn').addEventListener('click', join);
   $('cancelBtn').addEventListener('click', cancel);
   $('leaveBtn').addEventListener('click', toggleLeave);

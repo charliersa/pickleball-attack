@@ -64,6 +64,16 @@
         .row.off .name { text-decoration: line-through; color: #999; }
         .badge { font-size: 12px; padding: 1px 6px; border-radius: 4px; border: 1px solid #06C755; color: #06C755; background: #fff; font-weight: normal; }
         .badge.q { background: #06C755; color: #fff; }
+        .srow { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+        .srow .who { flex: 1; min-width: 0; font-size: 15px; }
+        .srow input { padding: 8px; font-size: 15px; }
+        .seg { display: flex; gap: 4px; flex: none; }
+        .seg button, .srow .del { width: auto; margin: 0; padding: 8px 10px; font-size: 14px;
+                                  background: #fff; color: #333; border: 1px solid #ccc; }
+        .seg button.on { background: #06C755; color: #fff; border-color: #06C755; }
+        .seg button:disabled { opacity: 1; background: #f3f8f4; color: #1DB446; border-color: #cfe9d6; }
+        .srow .del { color: #e5484d; border-color: #e5484d; }
+        #addFriendBtn { padding: 10px; margin: 10px 0; font-size: 15px; }
         .leaveTag { font-size: 12px; color: #FF8C00; font-weight: normal; }
 
         /* 表格 / 卡片 */
@@ -122,19 +132,15 @@
             <button id="leaveBtn" class="danger">本週請假（名額釋出給單次）</button>
         </div>
 
-        <!-- 單次球友：報名 -->
-        <div id="singleBox" hidden>
-            <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#222;margin-top:16px">
-                <input type="checkbox" id="selfPlay" checked style="width:20px;height:20px;margin:0;flex:none">
-                我本人也在這面場打球
-            </label>
-            <div class="small">朋友程度不同時，可以取消勾選，到另一面場幫朋友單獨報名</div>
-            <label for="guests" id="guestsLabel">同行人數</label>
-            <select id="guests"></select>
-            <div id="friendNames"></div>
-            <div id="feeLine" class="muted" style="margin-top:8px"></div>
-            <button id="joinBtn">我要報名</button>
-            <button id="cancelBtn" class="danger" hidden>取消報名</button>
+        <!-- 報名表：自己和每位朋友各選場地，按一次同時報好 -->
+        <div id="signupBox">
+            <div class="sec" style="margin-top:16px">我的報名</div>
+            <div class="small">自己和朋友各自選要打哪一面場，程度不同可以分開報，按一次送出</div>
+            <div id="signupRows"></div>
+            <button id="addFriendBtn" class="secondary" type="button">＋ 新增朋友</button>
+            <div id="signupSummary" class="muted" style="white-space:pre-line"></div>
+            <button id="joinBtn">送出報名</button>
+            <button id="cancelBtn" class="danger" hidden>取消我的全部報名</button>
         </div>
 
         <div class="listHead"><b id="listTitle"></b><span id="listTotal" class="muted"></span></div>
@@ -227,6 +233,6 @@
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一，避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=12"></script>
+<script type="module" src="index.js?v=13"></script>
 </body>
 </html>
