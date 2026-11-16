@@ -109,7 +109,7 @@ function splitEntries(list, capacity) {
   const waitlist = [];
   let used = 0;
   for (const e of sorted) {
-    const need = 1 + (e.guests || 0);
+    const need = headsOf(e);
     if (!waitlist.length && used + need <= capacity) {
       confirmed.push(e);
       used += need;
@@ -140,10 +140,31 @@ function friendList(e) {
   return Object.values(e?.friends || {}).filter(Boolean);
 }
 
+// 這筆報名佔幾個名額：self === false 代表報名人自己不打這面場，只幫朋友報
+function headsOf(e) {
+  return (e.self === false ? 0 : 1) + (e.guests || 0);
+}
+
 function personLabel(e) {
-  if (!e.guests) return e.name;
   const names = friendList(e);
+  if (e.self === false) {
+    return names.length ? `${names.join('、')}（${e.name} 代報）` : `${e.name} 代報 ${e.guests} 位`;
+  }
+  if (!e.guests) return e.name;
   return `${e.name} +${e.guests}${names.length ? `（${names.join('、')}）` : ''}`;
+}
+
+// 同行人數下拉選單：自己有打「只有我自己／帶 N 位」，自己不打「幫 N 位朋友報名」
+function renderGuestOptions(self, value) {
+  const from = self ? 0 : 1;
+  $('guests').replaceChildren(...Array.from({ length: MAX_GUESTS + 1 - from }, (_, i) => {
+    const n = i + from;
+    const o = el('option', '', self ? (n ? `帶 ${n} 位朋友` : '只有我自己') : `幫 ${n} 位朋友報名`);
+    o.value = String(n);
+    return o;
+  }));
+  $('guests').value = String(Math.max(from, value));
+  $('guestsLabel').textContent = self ? '同行人數' : '幫幾位朋友報名';
 }
 
 // 依同行人數產生朋友名字輸入框；已輸入的名字在增減人數時保留
@@ -454,7 +475,8 @@ function renderChain() {
     const key = entryKey(no);
     const ci = courts[no].confirmed.findIndex((e) => e.uid === key);
     const wi = courts[no].waitlist.findIndex((e) => e.uid === key);
-    return ci >= 0 ? `你是 ${no}號場 單次正取第 ${ci + 1} 位 ✅` : `你在 ${no}號場 候補第 ${wi + 1} 位，有人取消會自動遞補`;
+    const who = myEntry(no).self === false ? '你幫朋友報的' : '你';
+    return ci >= 0 ? `${who} ${no}號場 單次正取第 ${ci + 1} 組 ✅` : `${who} ${no}號場 候補第 ${wi + 1} 組，有人取消會自動遞補`;
   });
   if (memberHere) {
     $('myState').textContent = onLeave ? '你本週請假，名額已釋出給單次接龍'
@@ -477,9 +499,11 @@ function renderChain() {
 
   // 自己的同行人數有變（例如在別支手機改過）才同步下拉選單，避免蓋掉正在選的值
   const g = mine ? mine.guests : 0;
-  const key = JSON.stringify([selCourt, g, friendList(mine)]);
+  const self = mine?.self !== false;
+  const key = JSON.stringify([selCourt, self, g, friendList(mine)]);
   if (key !== lastMyGuests) {
-    $('guests').value = String(g);
+    $('selfPlay').checked = self;
+    renderGuestOptions(self, g);
     renderFriendInputs(friendList(mine));
     lastMyGuests = key;
   }
@@ -509,7 +533,7 @@ function renderChain() {
 // 單次報名區：費用與按鈕文字跟著同行人數、場地變動
 function updateSingleUI(cd = courtData(chain, selCourt, roster)) {
   const mine = myEntry();
-  const heads = 1 + Number($('guests').value);
+  const heads = ($('selfPlay').checked ? 1 : 0) + Number($('guests').value);
   const price = priceOf(chain);
   $('feeLine').replaceChildren(`單次 ${price} 元 × ${heads} 人 = `, el('b', '', `${price * heads} 元`), '（現場收費）');
   $('joinBtn').textContent = mine ? `更新 ${selCourt}號場同行人數`
@@ -551,9 +575,15 @@ async function join() {
   const no = selCourt;
   const guests = Number($('guests').value);
   const friends = readFriendInputs();
+  const self = $('selfPlay').checked;
   const mine = myEntry(no);
-  if (mine && mine.guests === guests && JSON.stringify(friendList(mine)) === JSON.stringify(friends || [])) {
-    setStatus('同行人數和名字都沒有變動');
+  if (!self && guests < 1) {
+    setStatus('不是自己打的話，至少要幫 1 位朋友報名');
+    return;
+  }
+  if (mine && mine.guests === guests && (mine.self !== false) === self
+    && JSON.stringify(friendList(mine)) === JSON.stringify(friends || [])) {
+    setStatus('報名內容沒有變動');
     return;
   }
   const entryRef = ref(db, `chains/${chainId}/entries/${entryKey(no)}`);
@@ -563,7 +593,7 @@ async function join() {
   try {
     if (mine) {
       // 只改人數與朋友名字，保留原本的報名時間（排序不變）
-      await update(entryRef, { guests, friends });
+      await update(entryRef, { guests, friends, self: self ? null : false });
     } else {
       const data = {
         name: profile.displayName.slice(0, 50),
@@ -572,6 +602,7 @@ async function join() {
         ts: serverTimestamp(),
       };
       if (friends) data.friends = friends;
+      if (!self) data.self = false; // 只幫朋友報，自己不佔名額
       await set(entryRef, data);
     }
     await announce(mine ? `已更新 ${no}號場同行朋友` : `${no}號場報名成功`, before);
@@ -591,7 +622,8 @@ async function cancel() {
   setStatus('處理中…');
   try {
     await remove(ref(db, `chains/${chainId}/entries/${entryKey(no)}`));
-    $('guests').value = '0';
+    $('selfPlay').checked = true;
+    renderGuestOptions(true, 0);
     renderFriendInputs([]);
     await announce(`已取消 ${no}號場報名`, before);
   } catch (err) {
@@ -690,11 +722,12 @@ function bindEvents() {
   });
   $('createForm').addEventListener('submit', onCreate);
   $('fDate').addEventListener('change', highlightChip);
-  $('guests').replaceChildren(...Array.from({ length: MAX_GUESTS + 1 }, (_, n) => {
-    const o = el('option', '', n ? `帶 ${n} 位朋友` : '只有我自己');
-    o.value = String(n);
-    return o;
-  }));
+  renderGuestOptions(true, 0);
+  $('selfPlay').addEventListener('change', () => {
+    renderGuestOptions($('selfPlay').checked, Number($('guests').value));
+    renderFriendInputs();
+    updateSingleUI();
+  });
   $('guests').addEventListener('change', () => { renderFriendInputs(); updateSingleUI(); });
   $('joinBtn').addEventListener('click', join);
   $('cancelBtn').addEventListener('click', cancel);

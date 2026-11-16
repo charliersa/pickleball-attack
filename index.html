@@ -124,7 +124,12 @@
 
         <!-- 單次球友：報名 -->
         <div id="singleBox" hidden>
-            <label for="guests">同行人數</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#222;margin-top:16px">
+                <input type="checkbox" id="selfPlay" checked style="width:20px;height:20px;margin:0;flex:none">
+                我本人也在這面場打球
+            </label>
+            <div class="small">朋友程度不同時，可以取消勾選，到另一面場幫朋友單獨報名</div>
+            <label for="guests" id="guestsLabel">同行人數</label>
             <select id="guests"></select>
             <div id="friendNames"></div>
             <div id="feeLine" class="muted" style="margin-top:8px"></div>
@@ -222,6 +227,6 @@
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一，避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=11"></script>
+<script type="module" src="index.js?v=12"></script>
 </body>
 </html>
