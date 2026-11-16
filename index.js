@@ -478,8 +478,22 @@ function setBusy(on) {
   if (!on) renderChain(); // 還原 joinBtn 的 disabled 狀態
 }
 
-async function announce(doneMsg) {
+// 正取名單的指紋：兩面場「未請假的會員 + 單次正取」是誰。只改同行人數、進候補都不會改變它
+function confirmedSig(c, members) {
+  return COURT_NOS.map((no) => {
+    const cd = courtData(c, no, members);
+    return [...cd.members.filter((m) => !m.leave).map((m) => m.uid), '|', ...cd.confirmed.map((e) => e.uid)].join(',');
+  }).join('#');
+}
+
+// 異動後只有正取名單有變才自動發到聊天室；before 是異動前的指紋
+async function announce(doneMsg, before) {
   try {
+    const [snap, rSnap] = await Promise.all([get(ref(db, `chains/${chainId}`)), get(ref(db, 'pkclub/members'))]);
+    if (confirmedSig(snap.val(), cleanRoster(rSnap.val())) === before) {
+      setStatus(`${doneMsg}（正取名單沒變，未發送到聊天室）`);
+      return;
+    }
     const r = await postChain(chainId, { inChatOnly: true });
     setStatus(r === 'sent' ? `${doneMsg}，已發送最新名單到聊天室` : doneMsg);
   } catch (err) {
@@ -501,6 +515,7 @@ async function join() {
     return;
   }
   const entryRef = ref(db, `chains/${chainId}/entries/${profile.userId}`);
+  const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
   try {
@@ -515,7 +530,7 @@ async function join() {
         ts: serverTimestamp(),
       });
     }
-    await announce(mine ? '已更新人數' : '報名成功');
+    await announce(mine ? '已更新人數' : '報名成功', before);
   } catch (err) {
     console.error(err);
     setStatus(`失敗：${err.message}`);
@@ -526,12 +541,13 @@ async function join() {
 
 async function cancel() {
   if (!confirm('確定要取消報名嗎？取消後重新報名會排到最後。')) return;
+  const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
   try {
     await remove(ref(db, `chains/${chainId}/entries/${profile.userId}`));
     $('guests').value = '0';
-    await announce('已取消報名');
+    await announce('已取消報名', before);
   } catch (err) {
     console.error(err);
     setStatus(`取消失敗：${err.message}`);
@@ -544,12 +560,13 @@ async function toggleLeave() {
   const on = !chain.leaves?.[profile.userId];
   if (on && !confirm('確定本週請假嗎？你的名額會釋出給單次接龍。')) return;
   const leaveRef = ref(db, `chains/${chainId}/leaves/${profile.userId}`);
+  const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
   try {
     if (on) await set(leaveRef, true);
     else await remove(leaveRef);
-    await announce(on ? '已請假，名額釋出給單次接龍' : '已取消請假');
+    await announce(on ? '已請假，名額釋出給單次接龍' : '已取消請假', before);
   } catch (err) {
     console.error(err);
     setStatus(`失敗：${err.message}`);
@@ -566,6 +583,7 @@ async function shareList() {
   } catch (err) {
     console.error(err);
     setStatus(`分享失敗：${err.message}`);
+    alert(`分享失敗：${err.message}`); // 狀態列在頁面最下面容易沒看到，跳窗提醒
   } finally {
     setBusy(false);
   }
