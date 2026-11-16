@@ -35,6 +35,9 @@
               "$i": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" }
             },
             "self": { ".validate": "newData.isBoolean() && newData.val() == false && newData.parent().child('guests').val() >= 1" },
+            "pay": { ".validate": "newData.val() == 'cash' || newData.val() == 'linepay'" },
+            "payReported": { ".validate": "newData.isBoolean()" },
+            "paid": { ".validate": "newData.isBoolean()" },
             "court": { ".validate": "(newData.val() == '6' || newData.val() == '7') && (!data.exists() || newData.val() == data.val())" },
             "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
             "$other": { ".validate": false }

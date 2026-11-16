@@ -74,6 +74,11 @@
         .seg button:disabled { opacity: 1; background: #f3f8f4; color: #1DB446; border-color: #cfe9d6; }
         .srow .del { color: #e5484d; border-color: #e5484d; }
         #addFriendBtn { padding: 10px; margin: 10px 0; font-size: 15px; }
+        .payTag { font-size: 12px; padding: 1px 6px; border-radius: 4px; font-weight: normal; flex: none; }
+        .payTag.cash { color: #666; border: 1px solid #ccc; }
+        .payTag.lp { color: #06C755; border: 1px solid #06C755; }
+        .payTag.rep { color: #FF8C00; border: 1px solid #FF8C00; }
+        .payTag.paid { color: #fff; background: #06C755; border: 1px solid #06C755; }
         .leaveTag { font-size: 12px; color: #FF8C00; font-weight: normal; }
 
         /* 表格 / 卡片 */
@@ -138,9 +143,20 @@
             <div class="small">自己和朋友各自選要打哪一面場，程度不同可以分開報，按一次送出</div>
             <div id="signupRows"></div>
             <button id="addFriendBtn" class="secondary" type="button">＋ 新增朋友</button>
-            <div id="signupSummary" class="muted" style="white-space:pre-line"></div>
+            <div class="srow" style="margin-top:12px"><span class="who">付款方式</span><div id="paySeg" class="seg"></div></div>
+            <div id="signupSummary" class="muted" style="white-space:pre-line;margin-top:8px"></div>
             <button id="joinBtn">送出報名</button>
             <button id="cancelBtn" class="danger" hidden>取消我的全部報名</button>
+
+            <!-- LINE Pay 付款：選 LINE Pay 且已報名時顯示 -->
+            <div id="payBox" class="note" hidden>
+                <div id="payAmount" style="font-weight:bold;font-size:15px"></div>
+                <img id="payQr" src="assets/linepay-qr.png" alt="LINE Pay 收款碼" style="display:block;width:220px;max-width:100%;margin:10px auto;border-radius:8px"
+                     onerror="this.hidden=true;document.getElementById('payNoQr').hidden=false">
+                <div id="payNoQr" hidden>請向團主索取 LINE Pay 收款碼。</div>
+                <div class="small" style="color:#666">在這支手機付款：長按收款碼存到相簿 → 打開 LINE「掃描行動條碼」→ 點右下角相簿選這張圖 → 付款。</div>
+                <button id="payDoneBtn">我已用 LINE Pay 付款</button>
+            </div>
         </div>
 
         <div class="listHead"><b id="listTitle"></b><span id="listTotal" class="muted"></span></div>

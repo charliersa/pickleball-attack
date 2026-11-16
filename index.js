@@ -484,7 +484,7 @@ function renderChain() {
   $('confirmedHead').textContent = `單次正取 ${cd.used}/${cd.cap}`;
   $('emptyHint').hidden = cd.confirmed.length > 0;
   const fill = (box, list) => box.replaceChildren(...list.map((e, i) =>
-    el('div', `row${isMe(e) ? ' me' : ''}`, el('span', 'n', `${i + 1}.`), el('span', '', personLabel(e)))));
+    el('div', `row${isMe(e) ? ' me' : ''}`, el('span', 'n', `${i + 1}.`), el('span', '', personLabel(e)), payTag(e))));
   fill($('confirmedRows'), cd.confirmed);
   fill($('waitRows'), cd.waitlist);
   $('waitHead').textContent = `候補 ${cd.waitlist.length} 組`;
@@ -495,7 +495,7 @@ function renderChain() {
 // form = { self: { 6: bool, 7: bool }, friends: [{ name, court }] }
 // 送出時每面場各存成一筆報名：自己有沒有打 + 這面場的朋友
 function formFromEntries() {
-  const f = { self: {}, friends: [] };
+  const f = { self: {}, friends: [], pay: COURT_NOS.map((no) => myEntry(no)?.pay).find(Boolean) || 'cash' };
   for (const no of COURT_NOS) {
     const e = myEntry(no);
     f.self[no] = !!e && e.self !== false;
@@ -513,11 +513,12 @@ function desiredEntry(no) {
   const e = { name: profile.displayName.slice(0, 50), guests: fr.length, court: no };
   if (names.some(Boolean)) e.friends = names.map((s) => s || '朋友'); // 都沒填就不存名字
   if (!form.self[no]) e.self = false;
+  e.pay = form.pay;
   return e;
 }
 
 function sameEntry(a, b) {
-  return a.guests === (b.guests || 0) && (a.self !== false) === (b.self !== false)
+  return a.guests === (b.guests || 0) && (a.self !== false) === (b.self !== false) && a.pay === (b.pay || 'cash')
     && JSON.stringify(friendList(a)) === JSON.stringify(friendList(b));
 }
 
@@ -586,6 +587,46 @@ function renderSignupForm() {
   $('joinBtn').textContent = hasMine ? '更新報名' : '送出報名';
   $('joinBtn').disabled = !heads && !hasMine;
   $('cancelBtn').hidden = !hasMine;
+
+  // 付款方式
+  $('paySeg').replaceChildren(
+    segButton('現金（現場）', form.pay === 'cash', () => { form.pay = 'cash'; renderSignupForm(); }),
+    segButton('LINE Pay', form.pay === 'linepay', () => { form.pay = 'linepay'; renderSignupForm(); }));
+
+  // LINE Pay 付款區：已存成 LINE Pay 的報名，還沒收款的金額
+  const lp = COURT_NOS.map((no) => myEntry(no)).filter((e) => e && e.pay === 'linepay' && !e.paid);
+  const due = lp.reduce((s, e) => s + headsOf(e) * price, 0);
+  const reported = lp.length > 0 && lp.every((e) => e.payReported);
+  $('payBox').hidden = !lp.length;
+  $('payAmount').textContent = reported ? `已回報 LINE Pay 付款 ${due} 元，等團主確認` : `請用 LINE Pay 付款 ${due} 元`;
+  $('payDoneBtn').hidden = reported;
+}
+
+// 名單上的付款狀態標籤
+function payTag(e) {
+  if (e.paid) return el('span', 'payTag paid', '已收 ✅');
+  if (e.pay === 'linepay') return e.payReported ? el('span', 'payTag rep', 'LINE Pay 待確認') : el('span', 'payTag lp', 'LINE Pay 未付');
+  return el('span', 'payTag cash', '現場付');
+}
+
+// 回報已用 LINE Pay 付款（標在每一筆 LINE Pay 的報名上）
+async function reportPaid() {
+  const changes = {};
+  for (const no of COURT_NOS) {
+    const e = myEntry(no);
+    if (e && e.pay === 'linepay' && !e.paid) changes[`${entryKey(no)}/payReported`] = true;
+  }
+  if (!Object.keys(changes).length) return;
+  setBusy(true);
+  try {
+    await update(ref(db, `chains/${chainId}/entries`), changes);
+    setStatus('已回報付款，團主確認後會標成「已收 ✅」');
+  } catch (err) {
+    console.error(err);
+    setStatus(`回報失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function addFriend() {
@@ -596,7 +637,7 @@ function addFriend() {
 }
 
 function setBusy(on) {
-  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'leaveBtn', 'shareListBtn'].forEach((id) => { $(id).disabled = on; });
+  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'payDoneBtn', 'leaveBtn', 'shareListBtn'].forEach((id) => { $(id).disabled = on; });
   if (!on) renderChain(); // 還原 joinBtn 的 disabled 狀態
 }
 
@@ -657,6 +698,9 @@ async function join() {
     } else {
       // 已報過的保留原本報名時間（排序不變）；新報名用伺服器時間
       changes[entryKey(no)] = { ...d, ts: ex ? ex.ts : serverTimestamp() };
+      // 保留付款狀態；人數變多時，已回報的 LINE Pay 要重新回報差額
+      if (ex?.paid) changes[entryKey(no)].paid = true;
+      if (ex?.payReported && d.pay === 'linepay' && headsOf(d) <= headsOf(ex)) changes[entryKey(no)].payReported = true;
       done.push(ex ? `更新 ${no}號場` : `報名 ${no}號場`);
     }
   }
@@ -765,6 +809,7 @@ function bindEvents() {
   $('createForm').addEventListener('submit', onCreate);
   $('fDate').addEventListener('change', highlightChip);
   $('addFriendBtn').addEventListener('click', addFriend);
+  $('payDoneBtn').addEventListener('click', reportPaid);
   $('joinBtn').addEventListener('click', join);
   $('cancelBtn').addEventListener('click', cancel);
   $('leaveBtn').addEventListener('click', toggleLeave);
