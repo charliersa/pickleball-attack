@@ -35,6 +35,10 @@
               "$i": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" }
             },
             "self": { ".validate": "newData.isBoolean() && newData.val() == false && newData.parent().child('guests').val() >= 1" },
+            "dupr": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 8" },
+            "friendDupr": {
+              "$i": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 8" }
+            },
             "pay": { ".validate": "newData.val() == 'cash' || newData.val() == 'linepay'" },
             "payReported": { ".validate": "newData.isBoolean()" },
             "paid": { ".validate": "newData.isBoolean()" },

@@ -146,13 +146,38 @@ function headsOf(e) {
   return (e.self === false ? 0 : 1) + (e.guests || 0);
 }
 
+// DUPR：1.000～8.000，最多三位小數；空白或不合法回傳 null
+function parseDupr(v) {
+  const t = String(v ?? '').trim();
+  const n = Number(t);
+  return t && n >= 1 && n <= 8 ? Math.round(n * 1000) / 1000 : null;
+}
+
+function friendDuprs(e) {
+  return Array.from({ length: e?.guests || 0 }, (_, i) => e.friendDupr?.[i] || null);
+}
+
+// 名字後面接 DUPR，例如「小赫 3.25」
+const withDupr = (name, d) => (d ? `${name} ${d}` : name);
+
 function personLabel(e) {
-  const names = friendList(e);
+  const fd = friendDuprs(e);
+  const names = friendList(e).map((n, i) => withDupr(n, fd[i]));
   if (e.self === false) {
     return names.length ? `${names.join('、')}（${e.name} 代報）` : `${e.name} 代報 ${e.guests} 位`;
   }
-  if (!e.guests) return e.name;
-  return `${e.name} +${e.guests}${names.length ? `（${names.join('、')}）` : ''}`;
+  const me = withDupr(e.name, e.dupr);
+  if (!e.guests) return me;
+  return `${me} +${e.guests}${names.length ? `（${names.join('、')}）` : ''}`;
+}
+
+// 自己的 DUPR 記在這支手機，下次報名自動帶入
+function loadMyDupr() {
+  try { return localStorage.getItem('myDupr') || ''; } catch { return ''; }
+}
+
+function saveMyDupr(v) {
+  try { if (v) localStorage.setItem('myDupr', String(v)); } catch { /* 無痕模式等情況忽略 */ }
 }
 
 function memberLine(cd) {
@@ -492,15 +517,24 @@ function renderChain() {
 }
 
 // ---------- 報名表 ----------
-// form = { self: { 6: bool, 7: bool }, friends: [{ name, court }] }
+// form = { self: { 6: bool, 7: bool }, dupr, pay, friends: [{ name, dupr, court }] }
 // 送出時每面場各存成一筆報名：自己有沒有打 + 這面場的朋友
 function formFromEntries() {
-  const f = { self: {}, friends: [], pay: COURT_NOS.map((no) => myEntry(no)?.pay).find(Boolean) || 'cash' };
+  const mine = COURT_NOS.map((no) => myEntry(no)).filter(Boolean);
+  const f = {
+    self: {},
+    friends: [],
+    pay: mine.map((e) => e.pay).find(Boolean) || 'cash',
+    dupr: String(mine.map((e) => e.dupr).find(Boolean) || loadMyDupr() || ''),
+  };
   for (const no of COURT_NOS) {
     const e = myEntry(no);
     f.self[no] = !!e && e.self !== false;
     const names = friendList(e);
-    for (let i = 0; i < (e?.guests || 0); i++) f.friends.push({ name: names[i] === '朋友' ? '' : names[i] || '', court: no });
+    const fd = friendDuprs(e);
+    for (let i = 0; i < (e?.guests || 0); i++) {
+      f.friends.push({ name: names[i] === '朋友' ? '' : names[i] || '', dupr: fd[i] ? String(fd[i]) : '', court: no });
+    }
   }
   return f;
 }
@@ -510,16 +544,26 @@ function desiredEntry(no) {
   const fr = form.friends.filter((f) => f.court === no);
   if (!form.self[no] && !fr.length) return null;
   const names = fr.map((f) => f.name.trim().slice(0, FRIEND_NAME_MAX));
+  const duprs = fr.map((f) => parseDupr(f.dupr));
   const e = { name: profile.displayName.slice(0, 50), guests: fr.length, court: no };
-  if (names.some(Boolean)) e.friends = names.map((s) => s || '朋友'); // 都沒填就不存名字
-  if (!form.self[no]) e.self = false;
+  // 名字或 DUPR 有填才存朋友資料；沒填名字顯示「朋友」
+  if (names.some(Boolean) || duprs.some(Boolean)) e.friends = names.map((x) => x || '朋友');
+  if (duprs.some(Boolean)) e.friendDupr = Object.fromEntries(duprs.map((d, i) => [i, d]).filter(([, d]) => d));
+  if (form.self[no]) {
+    const d = parseDupr(form.dupr);
+    if (d) e.dupr = d;
+  } else {
+    e.self = false;
+  }
   e.pay = form.pay;
   return e;
 }
 
 function sameEntry(a, b) {
   return a.guests === (b.guests || 0) && (a.self !== false) === (b.self !== false) && a.pay === (b.pay || 'cash')
-    && JSON.stringify(friendList(a)) === JSON.stringify(friendList(b));
+    && (a.dupr || null) === (b.dupr || null)
+    && JSON.stringify(friendList(a)) === JSON.stringify(friendList(b))
+    && JSON.stringify(friendDuprs(a)) === JSON.stringify(friendDuprs(b));
 }
 
 // 預覽：照表單送出後，每面場會在正取還是候補
@@ -547,9 +591,20 @@ function segButton(text, on, onClick, disabled = false) {
   return b;
 }
 
+function duprInput(value, onInput) {
+  const input = el('input', 'dupr');
+  input.inputMode = 'decimal';
+  input.maxLength = 6;
+  input.placeholder = 'DUPR';
+  input.value = value;
+  input.addEventListener('input', () => { onInput(input.value); renderSignupSummary(); });
+  return input;
+}
+
 function renderSignupForm() {
   const me = myMember();
   const selfRow = el('div', 'srow', el('span', 'who', `${profile.displayName}（你）`),
+    duprInput(form.dupr, (v) => { form.dupr = v; }),
     el('div', 'seg', ...COURT_NOS.map((no) => (me?.court === no
       ? segButton(`${no}號 會員`, false, () => {}, true)
       : segButton(`${no}號`, form.self[no], () => { form.self[no] = !form.self[no]; renderSignupForm(); })))));
@@ -559,19 +614,42 @@ function renderSignupForm() {
     input.maxLength = FRIEND_NAME_MAX;
     input.placeholder = `朋友 ${i + 1} 名字`;
     input.value = f.name;
-    input.addEventListener('input', () => { f.name = input.value; });
+    input.addEventListener('input', () => { f.name = input.value; renderSignupSummary(); });
     const del = el('button', 'del', '✕');
     del.type = 'button';
     del.setAttribute('aria-label', '移除這位朋友');
     del.addEventListener('click', () => { form.friends.splice(i, 1); renderSignupForm(); });
-    return el('div', 'srow', input,
+    return el('div', 'srow', input, duprInput(f.dupr, (v) => { f.dupr = v; }),
       el('div', 'seg', ...COURT_NOS.map((no) => segButton(`${no}號`, f.court === no, () => { f.court = no; renderSignupForm(); }))),
       del);
   });
   $('signupRows').replaceChildren(selfRow, ...friendRows);
   $('addFriendBtn').hidden = form.friends.length >= MAX_GUESTS;
 
-  // 摘要：每面場人數、正取或候補、費用
+  // 付款方式
+  $('paySeg').replaceChildren(
+    segButton('現金（現場）', form.pay === 'cash', () => { form.pay = 'cash'; renderSignupForm(); }),
+    segButton('LINE Pay', form.pay === 'linepay', () => { form.pay = 'linepay'; renderSignupForm(); }));
+  renderSignupSummary();
+}
+
+// DUPR 跟場地建議程度不符時提醒（不擋報名）
+function levelHints() {
+  const people = [
+    ...COURT_NOS.filter((no) => form.self[no]).map((no) => ({ name: '你', dupr: form.dupr, court: no })),
+    ...form.friends.map((f, i) => ({ name: f.name.trim() || `朋友 ${i + 1}`, dupr: f.dupr, court: f.court })),
+  ];
+  return people.map((p) => {
+    const d = parseDupr(p.dupr);
+    if (!d) return null;
+    if (p.court === '6' && d >= 3) return `💡 ${p.name} DUPR ${d}，建議報 7號場挑戰場`;
+    if (p.court === '7' && d < 3) return `💡 ${p.name} DUPR ${d}，在 7號場屬跨級挑戰`;
+    return null;
+  }).filter(Boolean);
+}
+
+// 摘要：每面場人數、正取或候補、費用、程度提醒；按鈕與付款區
+function renderSignupSummary() {
   const place = previewPlacement();
   const price = priceOf(chain);
   let heads = 0;
@@ -580,7 +658,12 @@ function renderSignupForm() {
     heads += n;
     return n ? `${no}號場 ${n} 人 → ${place[no]}` : null;
   }).filter(Boolean);
-  lines.push(heads ? `單次 ${price} 元 × ${heads} 人 = ${price * heads} 元（現場收費）` : '請點選自己或朋友要打的場地');
+  const how = form.pay === 'linepay' ? 'LINE Pay 付款' : '現場付現金';
+  lines.push(heads ? `單次 ${price} 元 × ${heads} 人 = ${price * heads} 元（${how}）` : '請點選自己或朋友要打的場地');
+  if ([form.dupr, ...form.friends.map((f) => f.dupr)].some((v) => String(v || '').trim() && !parseDupr(v))) {
+    lines.push('⚠️ DUPR 請填 1.000～8.000 之間的數字，或留空');
+  }
+  lines.push(...levelHints());
   $('signupSummary').textContent = lines.join('\n');
 
   const hasMine = COURT_NOS.some((no) => myEntry(no));
@@ -588,14 +671,9 @@ function renderSignupForm() {
   $('joinBtn').disabled = !heads && !hasMine;
   $('cancelBtn').hidden = !hasMine;
 
-  // 付款方式
-  $('paySeg').replaceChildren(
-    segButton('現金（現場）', form.pay === 'cash', () => { form.pay = 'cash'; renderSignupForm(); }),
-    segButton('LINE Pay', form.pay === 'linepay', () => { form.pay = 'linepay'; renderSignupForm(); }));
-
   // LINE Pay 付款區：已存成 LINE Pay 的報名，還沒收款的金額
   const lp = COURT_NOS.map((no) => myEntry(no)).filter((e) => e && e.pay === 'linepay' && !e.paid);
-  const due = lp.reduce((s, e) => s + headsOf(e) * price, 0);
+  const due = lp.reduce((sum, e) => sum + headsOf(e) * price, 0);
   const reported = lp.length > 0 && lp.every((e) => e.payReported);
   $('payBox').hidden = !lp.length;
   $('payAmount').textContent = reported ? `已回報 LINE Pay 付款 ${due} 元，等團主確認` : `請用 LINE Pay 付款 ${due} 元`;
@@ -683,6 +761,11 @@ async function writeMyEntries(changes, doneMsg) {
 }
 
 async function join() {
+  if ([form.dupr, ...form.friends.map((f) => f.dupr)].some((v) => String(v || '').trim() && !parseDupr(v))) {
+    setStatus('DUPR 請填 1.000～8.000 之間的數字，或留空');
+    return;
+  }
+  saveMyDupr(parseDupr(form.dupr));
   const changes = {};
   const done = [];
   let removing = false;
