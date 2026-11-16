@@ -638,9 +638,19 @@ async function main() {
   try {
     await liff.init({ liffId: LIFF_ID });
   } catch (err) {
-    setStatus(`LIFF 初始化失敗：${err.message}`);
+    // 外部瀏覽器登入後網址會帶一次性的 code，重新整理或重開分頁時會失效；
+    // 把登入參數清掉、只保留 ?e= 重新載入一次
+    const params = new URLSearchParams(location.search);
+    if (params.has('code') && !sessionStorage.getItem('liffRetried')) {
+      sessionStorage.setItem('liffRetried', '1');
+      const e = params.get('e') || new URLSearchParams(params.get('liff.state') || '').get('e');
+      location.replace(location.pathname + (e ? `?e=${encodeURIComponent(e)}` : ''));
+      return;
+    }
+    setStatus(`LIFF 初始化失敗：${err.message}（請從 LINE 聊天室裡開啟連結）`);
     return;
   }
+  sessionStorage.removeItem('liffRetried');
   if (!liff.isLoggedIn()) {
     liff.login({ redirectUri: location.href });
     return;
