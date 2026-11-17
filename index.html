@@ -178,7 +178,7 @@
         <form id="createForm">
             <label for="fTitle">活動名稱</label>
             <input id="fTitle" required maxlength="40" value="週日進擊包場">
-            <label>日期（2～8 月每週日）</label>
+            <label>日期（3～8 月每週日・1～2 月體驗期請手動選日期）</label>
             <div id="dateChips" class="chips"></div>
             <label for="fDate" class="sub">或選其他日期</label>
             <input id="fDate" type="date" required>
@@ -202,8 +202,9 @@
     <!-- 團資訊 -->
     <section id="infoView" hidden>
         <h1 style="margin-top:20px">進擊的匹克團</h1>
-        <div class="muted">雙場分級包場計畫｜2027 年 2～8 月</div>
-        <div class="note">🏓 兩個場地、兩種玩法！同級交流 × 跨級挑戰，一起突破自己的等級。</div>
+        <div class="muted">雙場分級包場計畫｜2027 年 1～8 月</div>
+        <div class="note">🏓 兩個場地、兩種玩法！同級交流 × 跨級挑戰，一起突破自己的等級。
+1～2 月為包場暢打體驗期，單次 160 元／人；3 月起正式推出會員方案。</div>
         <div class="kv">
             <div><span>時間</span><span>每週日 19:00–21:00（每次 2 小時）</span></div>
             <div><span>地點</span><span>鹿角｜6號場、7號場</span></div>
@@ -212,11 +213,13 @@
 
         <div class="h2">場地分級</div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
-            <div class="card"><div class="h">⚔️ 6號場｜進擊交流場 <span class="ok">2.5～2.99</span></div><div class="d">同級雙打交流，以球路穩定及戰術配合為主。</div></div>
-            <div class="card"><div class="h">🔥 7號場｜進擊挑戰場 <span class="ok">3.0+</span></div><div class="d">以 3.0+ 球友為主，安排跨級挑戰；2.99 以下可挑戰 3.0，3.0 也可挑戰更高等級（視當日程度與輪替安排）。</div></div>
+            <div class="card"><div class="h">⚔️ 7號場｜進擊交流場 <span class="ok">2.5～2.99</span></div><div class="d">同級雙打交流，以球路穩定及戰術配合為主。</div></div>
+            <div class="card"><div class="h">🔥 6號場｜進擊挑戰場 <span class="ok">3.0+</span></div><div class="d">以 3.0+ 球友為主，安排跨級挑戰；2.99 以下可挑戰 3.0，3.0 也可挑戰更高等級（視當日程度與輪替安排）。</div></div>
         </div>
 
         <div class="h2">收費方案</div>
+        <div class="muted" style="font-size:13px;margin-top:8px">🎉 1～2 月體驗期：單次 160 元／人／次，不分會員，每面場地可容納 8 人。</div>
+        <div class="muted" style="font-size:13px;margin-top:4px">🏆 3 月起正式推出會員方案：</div>
         <div class="plans">
             <div><span class="muted" style="font-size:13px">單次</span><span class="p">180</span><span class="small">元／場</span></div>
             <div><span class="muted" style="font-size:13px">月繳</span><span class="p">170</span><span class="small">元／場・4場680／5場850</span></div>

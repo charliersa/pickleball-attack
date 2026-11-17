@@ -1,5 +1,6 @@
 // 進擊的匹克團 接龍報名（LIFF + Firebase Realtime Database）
-// 雙場地（6號交流場／7號挑戰場），每面 8 人：會員保留名額 + 單次接龍；會員請假時名額自動釋出
+// 雙場地（7號交流場／6號挑戰場），每面 8 人：會員保留名額 + 單次接龍；會員請假時名額自動釋出
+// 1～2 月為體驗期（單次 160 元，無會員方案）；3 月起正式推出會員方案
 // 無 ?e= 參數：開團表單；有 ?e=<接龍ID>：報名頁
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
@@ -16,30 +17,50 @@ const COURT_SIZE = 8;     // 每面上限人數
 const DEFAULT_PRICE = 180;
 
 const COURTS = {
-  6: { no: '6', name: '進擊交流場', level: '2.5～2.99', desc: '⚔️ 同級雙打交流，以球路穩定及戰術配合為主。' },
-  7: { no: '7', name: '進擊挑戰場', level: '3.0+', desc: '🔥 以 3.0+ 為主的跨級挑戰；2.99 以下可挑戰 3.0，3.0 可挑戰更高等級。' },
+  6: { no: '6', name: '進擊挑戰場', level: '3.0+', desc: '🔥 以 3.0+ 為主的跨級挑戰；2.99 以下可挑戰 3.0，3.0 可挑戰更高等級。' },
+  7: { no: '7', name: '進擊交流場', level: '2.5～2.99', desc: '⚔️ 同級雙打交流，以球路穩定及戰術配合為主。' },
 };
 const COURT_NOS = ['6', '7'];
 const PLANS = ['季繳', '月繳'];
+const TRIAL_PRICE = 160; // 1～2 月體驗期單次價格
 
-// 2027 年 2～8 月每週日，共 30 場
-const SEASON = Array.from({ length: 30 }, (_, i) => new Date(2027, 1, 7 + i * 7));
-const MONTHS = [[2, 4], [3, 4], [4, 4], [5, 5], [6, 4], [7, 4], [8, 5]];
-const ANNOUNCE = `🔥 進擊的匹克團｜雙場分級包場計畫
-🏓 兩個場地、兩種玩法！同級交流 × 跨級挑戰，一起突破自己的等級。
-📅 2～8月｜每週日固定開團
-⏰ 19:00–21:00（每次 2 小時）
-📍 鹿角｜6號場、7號場
-⚔️ 建議程度 2.5～2.99：以同級雙打交流、球路穩定及戰術配合為主。
-🔥 以 3.0+ 球友為主，安排跨級挑戰；2.99 以下可挑戰 3.0，3.0 也可挑戰更高等級（視當日球友程度與輪替安排）。
-👥 每面上限 8 人，兩面共 16 人。
-📋 每面季繳2人、月繳2人、單次4人。
-💰 180 元／場
-💰 170 元／場；4 場月份 680 元，5 場月份 850 元。
-💰 1,920 元／12 場，平均 160 元／場；採固定 12 場次制。
-🎁 優先保留名額、優先登記跨級挑戰、累積團內進擊積分。
-📌 季繳按 12 場計，不等於任意連續三個月份；請假、補位及取消辦法將另行公告。
-🏆 勇於挑戰，突破極限！進擊的匹克團，等你一起進擊！`;
+// 正式會員方案：2027 年 3～8 月每週日，共 26 場（1～2 月為體驗期，不計入會員季繳／月繳）
+const SEASON = Array.from({ length: 26 }, (_, i) => new Date(2027, 2, 7 + i * 7));
+const MONTHS = [[3, 4], [4, 4], [5, 5], [6, 4], [7, 4], [8, 5]];
+const ANNOUNCE = `🔥 進擊的匹克團｜2027 雙場包場計畫 🔥
+
+🏓 1～2 月包場暢打體驗期
+🎉 體驗價只要 160 元／人／次！
+
+📍 地點｜鹿角匹克球場
+📅 時間｜每週日 19:00～21:00
+🏟️ 場地｜6 號場、7 號場
+👥 名額｜每面 8 人，共 16 人
+
+⚔️ 7 號場｜進擊交流場
+🎯 2.5～2.99 同級交流
+以雙打交流、技術提升為主！
+
+🔥 6 號場｜進擊挑戰場
+🎯 3.0+ 競技交流
+開放跨級挑戰！2.99 以下可挑戰 3.0，3.0 也能挑戰更高等級球友！
+
+━━━━━━━━━━━━
+
+🏆 3 月起正式推出會員方案
+
+🥇 季繳｜1,920 元／12 場
+🥈 月繳｜170 元／場（依當月場次計算）
+🥉 單次｜180 元／場
+
+👥 每面場地名額配置
+▪️ 季繳會員｜2 人
+▪️ 月繳會員｜2 人
+▪️ 單次報名｜4 人
+
+🎁 固定會員享優先保留名額及挑戰登記權益。
+
+🔥 進擊的匹克團，一起突破自己的極限！`;
 
 const db = getDatabase(initializeApp({ databaseURL: DB_URL }));
 const $ = (id) => document.getElementById(id);
@@ -329,6 +350,11 @@ function toISO(d) {
 
 const SEASON_ISO = SEASON.map(toISO);
 
+// 日期早於正式球季開始（3 月）：視為 1～2 月體驗期，預設單次價格用體驗價
+function defaultPriceFor(iso) {
+  return SEASON_ISO.length && iso < SEASON_ISO[0] ? TRIAL_PRICE : DEFAULT_PRICE;
+}
+
 // 日期快選：本季還沒過的週日，點了直接填入日期欄
 function renderDateChips() {
   const today = toISO(new Date());
@@ -338,13 +364,17 @@ function renderDateChips() {
     b.dataset.date = iso;
     b.addEventListener('click', () => {
       $('fDate').value = iso;
+      $('fPrice').value = defaultPriceFor(iso);
       highlightChip();
     });
     return b;
   });
   $('dateChips').replaceChildren(...buttons);
   $('dateChips').hidden = !buttons.length;
-  if (buttons.length && !$('fDate').value) $('fDate').value = buttons[0].dataset.date;
+  if (buttons.length && !$('fDate').value) {
+    $('fDate').value = buttons[0].dataset.date;
+    $('fPrice').value = defaultPriceFor(buttons[0].dataset.date);
+  }
   highlightChip();
 }
 
@@ -642,8 +672,10 @@ function levelHints() {
   return people.map((p) => {
     const d = parseDupr(p.dupr);
     if (!d) return null;
-    if (p.court === '6' && d >= 3) return `💡 ${p.name} DUPR ${d}，建議報 7號場挑戰場`;
-    if (p.court === '7' && d < 3) return `💡 ${p.name} DUPR ${d}，在 7號場屬跨級挑戰`;
+    const c = COURTS[p.court];
+    const challengeNo = COURT_NOS.find((no) => COURTS[no].name === '進擊挑戰場');
+    if (c.name === '進擊交流場' && d >= 3) return `💡 ${p.name} DUPR ${d}，建議報 ${challengeNo}號場挑戰場`;
+    if (c.name === '進擊挑戰場' && d < 3) return `💡 ${p.name} DUPR ${d}，在 ${p.court}號場屬跨級挑戰`;
     return null;
   }).filter(Boolean);
 }
@@ -890,7 +922,7 @@ function bindEvents() {
     b.addEventListener('click', () => showView(b.dataset.view));
   });
   $('createForm').addEventListener('submit', onCreate);
-  $('fDate').addEventListener('change', highlightChip);
+  $('fDate').addEventListener('change', () => { $('fPrice').value = defaultPriceFor($('fDate').value); highlightChip(); });
   $('addFriendBtn').addEventListener('click', addFriend);
   $('payDoneBtn').addEventListener('click', reportPaid);
   $('joinBtn').addEventListener('click', join);
