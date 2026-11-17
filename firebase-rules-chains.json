@@ -53,6 +53,12 @@
             ".validate": "newData.val() == true && root.child('pkclub/members/' + $uid).exists()"
           }
         },
+        "checkins": {
+          "$uid": {
+            ".write": true,
+            ".validate": "newData.val() == true"
+          }
+        },
         "$other": { ".validate": false }
       }
     }

@@ -526,21 +526,33 @@ function renderChain() {
   renderSignupForm();
 
   // 名單
+  const checkinBtn = (checkinUid) => {
+    const checked = !!chain.checkins?.[checkinUid];
+    const btn = el('button', `checkin${checked ? ' on' : ''}`, checked ? '✓' : '');
+    btn.type = 'button';
+    btn.title = checked ? '已簽到，點一下取消' : '點一下簽到';
+    btn.addEventListener('click', () => toggleCheckin(checkinUid));
+    return btn;
+  };
+  const attending = cd.members.filter((m) => !m.leave);
+  const checkedCount = [...attending, ...cd.confirmed].filter((p) => chain.checkins?.[p.uid]).length;
   $('listTitle').textContent = `${selCourt}號場名單`;
-  $('listTotal').textContent = `共 ${cd.total}/${COURT_SIZE} 人`;
+  $('listTotal').textContent = `共 ${cd.total}/${COURT_SIZE} 人・已簽到 ${checkedCount}/${attending.length + cd.confirmed.length}`;
   $('memberHead').textContent = cd.members.length ? `會員保留 ${cd.active}/${cd.members.length}` : '會員保留（尚未設定）';
   $('memberRows').replaceChildren(...cd.members.map((m, i) => {
     const badge = el('span', m.plan === '季繳' ? 'badge q' : 'badge', m.plan);
     const row = el('div', `row${m.uid === uid ? ' me' : ''}${m.leave ? ' off' : ''}`,
       el('span', 'n', `${i + 1}.`), el('span', 'name', m.uid === uid ? `${m.name}（你）` : m.name), badge);
     if (m.leave) row.append(el('span', 'leaveTag', '請假・名額釋出'));
+    else row.append(checkinBtn(m.uid));
     return row;
   }));
   $('confirmedHead').textContent = `單次正取 ${cd.used}/${cd.cap}`;
   $('emptyHint').hidden = cd.confirmed.length > 0;
   const fill = (box, list) => box.replaceChildren(...list.map((e, i) =>
     el('div', `row${isMe(e) ? ' me' : ''}`, el('span', 'n', `${i + 1}.`), el('span', '', personLabel(e)), payTag(e))));
-  fill($('confirmedRows'), cd.confirmed);
+  $('confirmedRows').replaceChildren(...cd.confirmed.map((e, i) =>
+    el('div', `row${isMe(e) ? ' me' : ''}`, el('span', 'n', `${i + 1}.`), el('span', '', personLabel(e)), payTag(e), checkinBtn(e.uid))));
   fill($('waitRows'), cd.waitlist);
   $('waitHead').textContent = `候補 ${cd.waitlist.length} 組`;
   $('waitHead').hidden = !cd.waitlist.length;
@@ -832,6 +844,18 @@ async function cancel() {
   const changes = {};
   for (const no of COURT_NOS) if (myEntry(no)) changes[entryKey(no)] = null;
   await writeMyEntries(changes, '已取消全部報名');
+}
+
+// 現場簽到：點名字旁的勾勾，不會發送到群組（避免洗版），只存在 Firebase 給大家即時看到
+async function toggleCheckin(checkinUid) {
+  const on = !chain.checkins?.[checkinUid];
+  try {
+    if (on) await set(ref(db, `chains/${chainId}/checkins/${checkinUid}`), true);
+    else await remove(ref(db, `chains/${chainId}/checkins/${checkinUid}`));
+  } catch (err) {
+    console.error(err);
+    setStatus(`簽到失敗：${errText(err)}`);
+  }
 }
 
 async function toggleLeave() {
