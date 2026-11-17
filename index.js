@@ -69,6 +69,8 @@ let profile = null;   // LINE 個人資料
 let chainId = null;
 let chain = null;     // 目前接龍的即時資料
 let roster = {};      // 會員名單 pkclub/members/{LINE userId}: { name, plan, court }
+let applications = {}; // 會員申請 pkclub/applications/{LINE userId}: { name, plan, court, ts }
+let applyForm = { plan: '季繳', court: '6' }; // 申請表單目前選的方案／場地
 let selCourt = null;  // 報名頁目前查看的場地
 let unsubChain = null;
 let form = null;      // 報名表內容（自己與朋友各選哪面場）
@@ -119,6 +121,14 @@ function cleanRoster(val) {
   const out = {};
   for (const [uid, m] of Object.entries(val || {})) {
     if (m && COURTS[m.court] && PLANS.includes(m.plan)) out[uid] = { name: String(m.name || '會員'), plan: m.plan, court: String(m.court) };
+  }
+  return out;
+}
+
+function cleanApplications(val) {
+  const out = {};
+  for (const [uid, a] of Object.entries(val || {})) {
+    if (a && COURTS[a.court] && PLANS.includes(a.plan)) out[uid] = { name: String(a.name || '球友'), plan: a.plan, court: String(a.court), ts: a.ts || 0 };
   }
   return out;
 }
@@ -331,7 +341,8 @@ async function postChain(id, { inChatOnly = false } = {}) {
 
 // ---------- 分頁 ----------
 function showView(id) {
-  ['chainView', 'createView', 'infoView'].forEach((v) => { $(v).hidden = v !== id; });
+  ['chainView', 'createView', 'infoView', 'reviewView'].forEach((v) => { $(v).hidden = v !== id; });
+  if (id === 'reviewView') renderReview();
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.view === id));
   setStatus('');
 }
@@ -759,7 +770,7 @@ function addFriend() {
 }
 
 function setBusy(on) {
-  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'payDoneBtn', 'leaveBtn', 'shareListBtn'].forEach((id) => { $(id).disabled = on; });
+  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'payDoneBtn', 'leaveBtn', 'shareListBtn', 'applyBtn', 'cancelApplyBtn'].forEach((id) => { $(id).disabled = on; });
   if (!on) renderChain(); // 還原 joinBtn 的 disabled 狀態
 }
 
@@ -928,6 +939,112 @@ function renderInfo() {
   $('myId').textContent = profile.userId;
 }
 
+// ---------- 會員申請 ----------
+function renderMembership() {
+  const mine = roster[profile.userId];
+  const myApp = applications[profile.userId];
+  $('memberApplyBox').hidden = !!mine || !!myApp;
+  $('cancelApplyBtn').hidden = !myApp;
+
+  if (mine) {
+    $('memberStatusBox').hidden = false;
+    $('memberStatusBox').textContent = `你已經是 ${mine.court}號場${mine.plan}會員 ✅`;
+  } else if (myApp) {
+    $('memberStatusBox').hidden = false;
+    $('memberStatusBox').textContent = `你的會員申請審核中：${myApp.court}號場・${myApp.plan}`;
+  } else {
+    $('memberStatusBox').hidden = true;
+    $('applyPlanSeg').replaceChildren(...PLANS.map((p) =>
+      segButton(p, applyForm.plan === p, () => { applyForm.plan = p; renderMembership(); })));
+    $('applyCourtSeg').replaceChildren(...COURT_NOS.map((no) =>
+      segButton(`${no}號`, applyForm.court === no, () => { applyForm.court = no; renderMembership(); })));
+  }
+}
+
+async function applyMembership() {
+  setBusy(true);
+  try {
+    await set(ref(db, `pkclub/applications/${profile.userId}`), {
+      name: profile.displayName.slice(0, 50),
+      plan: applyForm.plan,
+      court: applyForm.court,
+      ts: serverTimestamp(),
+    });
+    setStatus('已送出會員申請，等團主審核 ✅');
+  } catch (err) {
+    console.error(err);
+    setStatus(`申請失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function cancelApplication() {
+  if (!confirm('確定要取消會員申請嗎？')) return;
+  setBusy(true);
+  try {
+    await remove(ref(db, `pkclub/applications/${profile.userId}`));
+    setStatus('已取消申請');
+  } catch (err) {
+    console.error(err);
+    setStatus(`取消失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ---------- 會員審核（團主用） ----------
+function renderReview() {
+  const list = Object.entries(applications).sort(([, a], [, b]) => (a.ts || 0) - (b.ts || 0));
+  $('reviewEmptyHint').hidden = list.length > 0;
+  $('reviewRows').replaceChildren(...list.map(([appUid, a]) => {
+    const occupied = Object.values(roster).filter((m) => m.court === a.court && m.plan === a.plan).length;
+    const approveBtn = el('button', 'on', '核准 ✅');
+    approveBtn.type = 'button';
+    const rejectBtn = el('button', '', '拒絕');
+    rejectBtn.type = 'button';
+    rejectBtn.style.color = '#e5484d';
+    rejectBtn.style.borderColor = '#e5484d';
+    approveBtn.addEventListener('click', () => approveApplication(appUid, a));
+    rejectBtn.addEventListener('click', () => rejectApplication(appUid, a));
+    return el('div', 'card',
+      el('div', 'h', `${a.name}　申請 ${a.court}號場・${a.plan}`),
+      el('div', 'd', `目前 ${a.court}號場${a.plan}會員 ${occupied} 人（建議 2 人）`),
+      el('div', 'seg', approveBtn, rejectBtn));
+  }));
+}
+
+async function approveApplication(appUid, a) {
+  if (!confirm(`核准 ${a.name}（${a.court}號場・${a.plan}）成為會員嗎？`)) return;
+  setBusy(true);
+  try {
+    await update(ref(db, 'pkclub'), {
+      [`members/${appUid}`]: { name: a.name, plan: a.plan, court: a.court },
+      [`applications/${appUid}`]: null,
+    });
+    setStatus(`已核准 ${a.name} 成為會員`);
+  } catch (err) {
+    console.error(err);
+    setStatus(`核准失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function rejectApplication(appUid, a) {
+  if (!confirm(`確定要拒絕 ${a.name} 的申請嗎？`)) return;
+  setBusy(true);
+  try {
+    await remove(ref(db, `pkclub/applications/${appUid}`));
+    setStatus(`已拒絕 ${a.name} 的申請`);
+  } catch (err) {
+    console.error(err);
+    setStatus(`操作失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
+}
+
 // 不是在 LINE App 裡開（例如被丟到 Chrome / Safari）就無法發到群組，提示改用 LINE 開啟
 function showOpenInLine() {
   if (liff.isInClient()) return;
@@ -961,6 +1078,8 @@ function bindEvents() {
     await copyText(profile.userId);
     setStatus('已複製你的 ID ✅');
   });
+  $('applyBtn').addEventListener('click', applyMembership);
+  $('cancelApplyBtn').addEventListener('click', cancelApplication);
 }
 
 async function main() {
@@ -997,14 +1116,24 @@ async function main() {
   renderDateChips();
   renderCreateCourts();
   renderInfo();
+  renderMembership();
   $('tabs').hidden = false;
 
-  // 會員名單即時同步（團主在 Firebase 後台改名單，頁面會自動更新）
+  // 會員名單即時同步（團主審核通過，或在 Firebase 後台改名單，頁面會自動更新）
   onValue(ref(db, 'pkclub/members'), (snap) => {
     roster = cleanRoster(snap.val());
     renderCreateCourts();
+    renderMembership();
     if (chain) renderChain();
+    if (!$('reviewView').hidden) renderReview();
   }, (err) => console.error('讀取會員名單失敗', err));
+
+  // 會員申請即時同步
+  onValue(ref(db, 'pkclub/applications'), (snap) => {
+    applications = cleanApplications(snap.val());
+    renderMembership();
+    if (!$('reviewView').hidden) renderReview();
+  }, (err) => console.error('讀取會員申請失敗', err));
 
   // liff.init 完成後網址才會還原成 ?e=xxx
   const id = new URLSearchParams(location.search).get('e');

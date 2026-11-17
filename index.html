@@ -121,6 +121,7 @@
         <button data-view="chainView" hidden>報名頁</button>
         <button data-view="createView">開團</button>
         <button data-view="infoView">團資訊</button>
+        <button data-view="reviewView">會員審核</button>
     </nav>
 
     <!-- 報名頁：有 ?e=<接龍ID> 時顯示 -->
@@ -198,7 +199,7 @@
             <label for="fPrice">單次價格（元／人）</label>
             <input id="fPrice" type="number" required min="0" max="10000" value="180">
             <label for="fNote">備註（選填）</label>
-            <textarea id="fNote" rows="3" maxlength="200">單次 180 元／人現場收；會員名額已保留，請假請按「本週請假」</textarea>
+            <textarea id="fNote" rows="3" maxlength="200" placeholder="單次 180 元／人現場收；會員名額已保留，請假請按「本週請假」"></textarea>
             <button id="createBtn" type="submit">建立並發送到群組</button>
         </form>
     </section>
@@ -246,10 +247,30 @@
         <div class="note" style="font-size:13px;color:#666;margin-top:16px">📌 季繳按 12 場計，不等於任意連續三個月份；請假、補位及取消辦法將另行公告。</div>
         <button id="copyAnnounceBtn" class="secondary" style="margin-top:16px">複製 LINE 招募公告</button>
 
-        <div class="h2">會員綁定</div>
-        <div class="muted" style="font-size:13px;margin-top:4px">固定會員請把下面的 ID 傳給團主，加入會員名單後即可保留名額與請假。</div>
+        <div class="h2">會員申請</div>
+        <div id="memberApplyBox">
+            <div class="muted" style="font-size:13px;margin-top:4px">申請固定會員，團主審核通過後即可保留名額、享有請假與優先權益。</div>
+            <label class="sub">選擇方案</label>
+            <div id="applyPlanSeg" class="seg" style="margin-top:4px"></div>
+            <label class="sub">選擇場地</label>
+            <div id="applyCourtSeg" class="seg" style="margin-top:4px"></div>
+            <button id="applyBtn">送出會員申請</button>
+        </div>
+        <div id="memberStatusBox" class="muted" style="font-size:14px;margin-top:8px" hidden></div>
+        <button id="cancelApplyBtn" class="danger" hidden>取消申請</button>
+
+        <div class="h2" style="margin-top:24px">會員綁定（進階）</div>
+        <div class="muted" style="font-size:13px;margin-top:4px">團主也可以直接把下面的 ID 貼到 Firebase 手動加入會員名單。</div>
         <div id="myId" style="margin-top:6px"></div>
         <button id="copyIdBtn" class="secondary">複製我的 ID</button>
+    </section>
+
+    <!-- 會員審核：團主用，審核大家送出的會員申請 -->
+    <section id="reviewView" hidden>
+        <h1 style="margin-top:20px">會員審核</h1>
+        <div class="muted" style="font-size:14px">審核大家送出的會員申請，核准後會寫進會員名單、自動保留名額。</div>
+        <div id="reviewEmptyHint" class="muted" style="color:#aaa;margin:16px 0" hidden>目前沒有待審核的申請。</div>
+        <div id="reviewRows" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"></div>
     </section>
 
     <p id="status">載入中…</p>

@@ -3,7 +3,26 @@
     "pkclub": {
       "members": {
         ".read": true,
-        ".write": false
+        "$uid": {
+          ".write": true,
+          ".validate": "newData.hasChildren(['name', 'plan', 'court'])",
+          "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+          "plan": { ".validate": "newData.val() == '季繳' || newData.val() == '月繳'" },
+          "court": { ".validate": "newData.val() == '6' || newData.val() == '7'" },
+          "$other": { ".validate": false }
+        }
+      },
+      "applications": {
+        ".read": true,
+        "$uid": {
+          ".write": true,
+          ".validate": "newData.hasChildren(['name', 'plan', 'court', 'ts'])",
+          "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
+          "plan": { ".validate": "newData.val() == '季繳' || newData.val() == '月繳'" },
+          "court": { ".validate": "newData.val() == '6' || newData.val() == '7'" },
+          "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
+          "$other": { ".validate": false }
+        }
       }
     },
     "chains": {
