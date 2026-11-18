@@ -13,7 +13,7 @@
 const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebasedatabase.app';
 const PLANS = ['季繳', '月繳'];
 const DAY_LABEL = { sun: '週日', fri: '週五' };
-// 改版前的接龍（沒有 courts 欄位）：週日 6 號挑戰場、7 號交流場；舊會員 6→4、7→5
+// 場地統一為 4、5 號場。改版前的接龍與會員資料存的是 6、7 號，同步時換算：6→4（挑戰場）、7→5（交流場）
 const LEGACY_COURTS = { 6: { name: '進擊挑戰場', level: '3.0+' }, 7: { name: '進擊交流場', level: '2.5～2.99' } };
 const LEGACY_COURT_MAP = { 6: '4', 7: '5' };
 const DEFAULT_COURT_SIZE = 8;
@@ -95,9 +95,11 @@ function chainDay(c) {
   return DAY_LABEL[c.day] ? c.day : 'sun';
 }
 
+// no：顯示用的場地號碼（4／5）；raw：資料庫裡報名存的號碼（舊接龍是 6／7）
 function chainCourts(c) {
   const src = c.courts || LEGACY_COURTS;
-  return Object.keys(src).sort((a, b) => a - b).map((no) => ({ no, name: src[no].name, level: src[no].level }));
+  return Object.keys(src).map((raw) => ({ no: c.courts ? raw : (LEGACY_COURT_MAP[raw] || raw), raw, name: src[raw].name, level: src[raw].level }))
+    .sort((a, b) => a.no - b.no);
 }
 
 // 依報名時間排序，逐筆佔名額；一旦有人排不進，之後全部進候補（先來後到）
@@ -113,13 +115,13 @@ function splitEntries(list, capacity) {
   return { confirmed, waitlist, used };
 }
 
-function courtData(c, no, members, size) {
+function courtData(c, court, members, size) {
   const day = chainDay(c);
-  const ms = members.filter((m) => m.day === day && (m.court === no || m.rawCourt === no))
+  const ms = members.filter((m) => m.day === day && m.court === court.no)
     .map((m) => Object.assign({}, m, { leave: !!(c.leaves && c.leaves[m.key]) }));
   const active = ms.filter((m) => !m.leave).length;
   const cap = Math.max(0, size - active);
-  const entries = Object.keys(c.entries || {}).map((uid) => Object.assign({ uid }, c.entries[uid])).filter((e) => e.court === no);
+  const entries = Object.keys(c.entries || {}).map((uid) => Object.assign({ uid }, c.entries[uid])).filter((e) => e.court === court.raw);
   return Object.assign({ members: ms, active, cap, size }, splitEntries(entries, cap));
 }
 
@@ -189,7 +191,7 @@ function syncAll() {
       const price = typeof c.price === 'number' ? c.price : 0;
       const checkins = c.checkins || {};
       chainCourts(c).forEach((court) => {
-        const cd = courtData(c, court.no, members, sizes[day]);
+        const cd = courtData(c, court, members, sizes[day]);
         const base = [c.iso, DAY_LABEL[day], c.title, `${court.no}號場 ${court.name}（${court.level}）`];
         const add = (e, status) => {
           const friends = listOf(e.friends).join('、');
