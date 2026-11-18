@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=18';
+import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=19';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -1067,9 +1067,9 @@ function renderInfo() {
     return [el('div', 'sec', `${DAYS[d].label}場`), el('div', 'months', ...cells, total)];
   }));
 
-  $('sheetSource').textContent = CFG.source === 'sheet' ? '📄 以上資訊即時取自團務試算表'
-    : CFG.source === 'cache' ? '📄 試算表暫時讀不到，顯示上次讀到的資料' : '📄 試算表暫時讀不到，顯示內建預設資料';
-  $('sheetLink').href = SHEET_URL;
+  // 資料一律從 Google Sheet 讀取；前台不顯示試算表連結，只在讀不到、改用備用資料時提示
+  $('sheetSource').hidden = CFG.source === 'sheet';
+  $('sheetSource').textContent = CFG.source === 'cache' ? '⚠️ 場次資料暫時讀不到，顯示上次讀到的內容' : '⚠️ 場次資料暫時讀不到，顯示預設內容';
   $('myId').textContent = profile.userId;
 }
 

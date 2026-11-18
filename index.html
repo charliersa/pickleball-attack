@@ -239,7 +239,7 @@
         <div id="monthGrids"></div>
 
         <div class="note" style="font-size:13px;color:#666;margin-top:16px">📌 季繳按 12 場計，涵蓋指定團別（週五或週日），不等於任意連續三個月份；週五與週日的會員名額、收支各自獨立。請假、補位及退費辦法將另行公告。</div>
-        <div class="small" style="margin-top:8px"><span id="sheetSource"></span>　<a id="sheetLink" target="_blank" rel="noopener">開啟試算表</a></div>
+        <div id="sheetSource" class="small" style="margin-top:8px" hidden></div>
         <button id="copyAnnounceBtn" class="secondary" style="margin-top:16px">複製 LINE 招募公告</button>
 
         <div class="h2">會員申請</div>
@@ -294,6 +294,6 @@
 </script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=18"></script>
+<script type="module" src="index.js?v=19"></script>
 </body>
 </html>
