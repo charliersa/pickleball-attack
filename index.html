@@ -273,8 +273,26 @@
     <p id="status">載入中…</p>
 </div>
 
+<script>
+    // 程式載入失敗（例如網路不穩、剛改版時檔案還沒更新完）會停在「載入中…」：把錯誤顯示出來，提示重新開啟
+    (function () {
+        var shown = false;
+        function fail(msg) {
+            var s = document.getElementById('status');
+            if (shown || !s || s.textContent !== '載入中…') return;
+            shown = true;
+            s.textContent = '載入失敗，請關閉頁面後重新開啟' + (msg ? '（' + msg + '）' : '');
+        }
+        window.addEventListener('error', function (e) {
+            var t = e.target;
+            if (t && t.tagName === 'SCRIPT') fail('無法載入 ' + t.src.split('/').pop());
+            else if (e.message) fail(e.message);
+        }, true);
+        setTimeout(function () { fail('等候逾時'); }, 20000);
+    })();
+</script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<!-- 改版時把 v 加一，避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=15"></script>
+<!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
+<script type="module" src="index.js?v=16"></script>
 </body>
 </html>

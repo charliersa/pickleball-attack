@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=15';
+import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=16';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -1330,4 +1330,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  setStatus(`啟動失敗：${errText(err)}（請關閉頁面後重新開啟）`);
+});
