@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=17';
+import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=18';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -345,37 +345,12 @@ function buildChainFlex(c, id, members) {
   };
 }
 
-// 純文字版名單：可長按複製，通知列也看得到完整內容
-function buildChainText(c, id, members) {
-  const lines = [
-    `🏓【匹克球接龍】${c.title}`,
-    `📅 ${c.date}　${c.time}`,
-    `📍 ${c.place}`,
-  ];
-  if (c.note) lines.push(`📝 ${c.note}`);
-  for (const no of courtNos(c)) {
-    const cd = courtData(c, no, members);
-    lines.push('', `🏟 ${cd.no}號場｜${cd.name}（${cd.level}）`, memberLine(cd), `✅ 單次正取 ${cd.used}/${cd.cap}`);
-    if (!cd.confirmed.length) lines.push('（還沒有人報名）');
-    cd.confirmed.forEach((e, i) => lines.push(`${i + 1}. ${personLabel(e)}`));
-    if (cd.waitlist.length) {
-      lines.push(`⏳ 候補 ${cd.waitlist.length} 組`);
-      cd.waitlist.forEach((e, i) => lines.push(`${i + 1}. ${personLabel(e)}`));
-    }
-  }
-  lines.push('', `👉 報名／修改：${chainUrl(id)}`);
-  let text = lines.join('\n');
-  // LINE 文字訊息上限 5000 字
-  if (text.length > 5000) text = `${text.slice(0, 4900)}\n…\n👉 ${chainUrl(id)}`;
-  return { type: 'text', text };
-}
-
-// 把最新名單發出去（Flex 卡片 + 文字訊息）。inChatOnly=true 時只在聊天室內自動發，不跳分享選單
+// 把最新名單發出去（只發 Flex 卡片）。inChatOnly=true 時只在聊天室內自動發，不跳分享選單
 async function postChain(id, { inChatOnly = false } = {}) {
   const [snap, rSnap] = await Promise.all([get(ref(db, `chains/${id}`)), get(ref(db, 'pkclub/members'))]);
   const c = snap.val();
   const members = cleanList(rSnap.val(), '會員');
-  const msg = [buildChainFlex(c, id, members), buildChainText(c, id, members)];
+  const msg = [buildChainFlex(c, id, members)];
   if (canSendToChat()) {
     await liff.sendMessages(msg);
     return 'sent';
