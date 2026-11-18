@@ -3,23 +3,25 @@
     "pkclub": {
       "members": {
         ".read": true,
-        "$uid": {
+        "$key": {
           ".write": true,
-          ".validate": "newData.hasChildren(['name', 'plan', 'court'])",
+          ".validate": "newData.hasChildren(['name', 'plan', 'court']) && (($key.endsWith('_sun') && newData.child('day').val() == 'sun') || ($key.endsWith('_fri') && newData.child('day').val() == 'fri') || (!$key.contains('_') && !newData.hasChild('day')))",
           "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "plan": { ".validate": "newData.val() == '季繳' || newData.val() == '月繳'" },
-          "court": { ".validate": "newData.val() == '6' || newData.val() == '7'" },
+          "court": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,2}$/)" },
+          "day": { ".validate": "newData.val() == 'sun' || newData.val() == 'fri'" },
           "$other": { ".validate": false }
         }
       },
       "applications": {
         ".read": true,
-        "$uid": {
+        "$key": {
           ".write": true,
-          ".validate": "newData.hasChildren(['name', 'plan', 'court', 'ts'])",
+          ".validate": "newData.hasChildren(['name', 'plan', 'court', 'ts']) && (($key.endsWith('_sun') && newData.child('day').val() == 'sun') || ($key.endsWith('_fri') && newData.child('day').val() == 'fri') || (!$key.contains('_') && !newData.hasChild('day')))",
           "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "plan": { ".validate": "newData.val() == '季繳' || newData.val() == '月繳'" },
-          "court": { ".validate": "newData.val() == '6' || newData.val() == '7'" },
+          "court": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,2}$/)" },
+          "day": { ".validate": "newData.val() == 'sun' || newData.val() == 'fri'" },
           "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
           "$other": { ".validate": false }
         }
@@ -37,6 +39,16 @@
         "note": { ".validate": "newData.isString() && newData.val().length <= 200" },
         "price": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 10000" },
         "week": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 60 && newData.val() % 1 == 0" },
+        "day": { ".validate": "newData.val() == 'sun' || newData.val() == 'fri'" },
+        "courts": {
+          "$no": {
+            ".validate": "$no.matches(/^[0-9]{1,2}$/) && newData.hasChildren(['kind', 'name', 'level'])",
+            "kind": { ".validate": "newData.val() == '挑戰' || newData.val() == '交流' || newData.val() == '初學'" },
+            "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
+            "level": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
+            "$other": { ".validate": false }
+          }
+        },
         "createdAt": { ".validate": "newData.val() == now" },
         "creator": {
           ".validate": "newData.hasChildren(['id', 'name'])",
@@ -61,15 +73,15 @@
             "pay": { ".validate": "newData.val() == 'cash' || newData.val() == 'linepay'" },
             "payReported": { ".validate": "newData.isBoolean()" },
             "paid": { ".validate": "newData.isBoolean()" },
-            "court": { ".validate": "(newData.val() == '6' || newData.val() == '7') && (!data.exists() || newData.val() == data.val())" },
+            "court": { ".validate": "newData.isString() && (root.child('chains/' + $chainId + '/courts/' + newData.val()).exists() || (!root.child('chains/' + $chainId + '/courts').exists() && (newData.val() == '6' || newData.val() == '7'))) && (!data.exists() || newData.val() == data.val())" },
             "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
             "$other": { ".validate": false }
           }
         },
         "leaves": {
-          "$uid": {
+          "$key": {
             ".write": true,
-            ".validate": "newData.val() == true && root.child('pkclub/members/' + $uid).exists()"
+            ".validate": "newData.val() == true && root.child('pkclub/members/' + $key).exists()"
           }
         },
         "checkins": {

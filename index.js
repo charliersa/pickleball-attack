@@ -1,11 +1,12 @@
-// 進擊的匹克團 接龍報名（LIFF + Firebase Realtime Database）
-// 雙場地（7號交流場／6號挑戰場），每面 8 人：會員保留名額 + 單次接龍；會員請假時名額自動釋出
-// 1～2 月為體驗期（單次 160 元，無會員方案）；3 月起正式推出會員方案
+// 進擊的匹克團 接龍報名（LIFF + Firebase Realtime Database + Google 試算表設定）
+// 每週五、週日兩個時段，各兩面場（鹿角 4、5 號），每面 8 人：會員保留名額 + 單次接龍；會員請假時名額自動釋出
+// 場次行事曆、價格、場地分級從 Google 試算表「鹿角包場計劃」讀取（sheet.js）；報名資料存 Firebase
 // 無 ?e= 參數：開團表單；有 ?e=<接龍ID>：報名頁
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=15';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -13,64 +14,29 @@ const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebaseda
 const MAX_GUESTS = 7;     // 每人最多帶幾位朋友（一面 8 人扣掉自己；要跟資料庫規則一致）
 const FRIEND_NAME_MAX = 20;
 const FLEX_MAX_ROWS = 40; // Flex 卡片最多列幾個名字，避免超過 LINE 訊息大小限制
-const COURT_SIZE = 8;     // 每面上限人數
-const DEFAULT_PRICE = 180;
-
-const COURTS = {
-  6: { no: '6', name: '進擊挑戰場', level: '3.0+', desc: '🔥 以 3.0+ 為主的跨級挑戰；2.99 以下可挑戰 3.0，3.0 可挑戰更高等級。' },
-  7: { no: '7', name: '進擊交流場', level: '2.5～2.99', desc: '⚔️ 同級雙打交流，以球路穩定及戰術配合為主。' },
-};
-const COURT_NOS = ['6', '7'];
+const DEFAULT_TIME = '19:00 - 21:00';
 const PLANS = ['季繳', '月繳'];
-const TRIAL_PRICE = 160; // 1～2 月體驗期單次價格
+const SEASON_SESSIONS = 12; // 季繳涵蓋指定團別 12 場
 
-// 正式會員方案：2027 年 3～8 月每週日，共 26 場（1～2 月為體驗期，不計入會員季繳／月繳）
-const SEASON = Array.from({ length: 26 }, (_, i) => new Date(2027, 2, 7 + i * 7));
-const MONTHS = [[3, 4], [4, 4], [5, 5], [6, 4], [7, 4], [8, 5]];
-const ANNOUNCE = `🔥 進擊的匹克團｜2027 雙場包場計畫 🔥
-
-🏓 1～2 月包場暢打體驗期
-🎉 體驗價只要 160 元／人／次！
-
-📍 地點｜鹿角匹克球場
-📅 時間｜每週日 19:00～21:00
-🏟️ 場地｜6 號場、7 號場
-👥 名額｜每面 8 人，共 16 人
-
-⚔️ 7 號場｜進擊交流場
-🎯 2.5～2.99 同級交流
-以雙打交流、技術提升為主！
-
-🔥 6 號場｜進擊挑戰場
-🎯 3.0+ 競技交流
-開放跨級挑戰！2.99 以下可挑戰 3.0，3.0 也能挑戰更高等級球友！
-
-━━━━━━━━━━━━
-
-🏆 3 月起正式推出會員方案
-
-🥇 季繳｜1,920 元／12 場
-🥈 月繳｜170 元／場（依當月場次計算）
-🥉 單次｜180 元／場
-
-👥 每面場地名額配置
-▪️ 季繳會員｜2 人
-▪️ 月繳會員｜2 人
-▪️ 單次報名｜4 人
-
-🎁 固定會員享優先保留名額及挑戰登記權益。
-
-🔥 進擊的匹克團，一起突破自己的極限！`;
+// 改版前的接龍（沒有存 courts 欄位）：週日 6 號挑戰場、7 號交流場
+const LEGACY_COURTS = [
+  { no: '6', kind: '挑戰', name: '進擊挑戰場', level: '3.0+' },
+  { no: '7', kind: '交流', name: '進擊交流場', level: '2.5～2.99' },
+];
+// 舊會員資料（key 是 LINE ID、court 是 6／7）視為週日會員，對應到新場地
+const LEGACY_COURT_MAP = { 6: '4', 7: '5' };
 
 const db = getDatabase(initializeApp({ databaseURL: DB_URL }));
 const $ = (id) => document.getElementById(id);
 
+let CFG = null;       // 試算表設定 { sessions, ops, names, source }
 let profile = null;   // LINE 個人資料
 let chainId = null;
 let chain = null;     // 目前接龍的即時資料
-let roster = {};      // 會員名單 pkclub/members/{LINE userId}: { name, plan, court }
-let applications = {}; // 會員申請 pkclub/applications/{LINE userId}: { name, plan, court, ts }
-let applyForm = { plan: '季繳', court: '6' }; // 申請表單目前選的方案／場地
+let roster = {};      // 會員名單 pkclub/members/{會員key}: { name, plan, court, day }
+let applications = {}; // 會員申請 pkclub/applications/{會員key}: { name, plan, court, day, ts }
+let applyForm = { day: 'sun', plan: '季繳', court: null }; // 申請表單目前的選擇
+let createDay = 'sun'; // 開團表單目前的時段
 let selCourt = null;  // 報名頁目前查看的場地
 let unsubChain = null;
 let form = null;      // 報名表內容（自己與朋友各選哪面場）
@@ -116,21 +82,96 @@ async function copyText(text) {
   }
 }
 
+// ---------- 日期 ----------
+// '2026-11-22' → '11/22（日）'
+function formatDate(value) {
+  const [y, m, d] = value.split('-').map(Number);
+  const weekday = '日一二三四五六'[new Date(y, m - 1, d).getDay()];
+  return `${m}/${d}（${weekday}）`;
+}
+
+function toISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+const fmt = (n) => n.toLocaleString('en-US');
+
+// ---------- 試算表設定 ----------
+const opsOf = (day) => CFG.ops[day] || CFG.ops.sun;
+const sessionsOf = (day) => CFG.sessions.filter((s) => s.day === day);
+const formalOf = (day) => sessionsOf(day).filter((s) => !s.trial);
+const sessionAt = (iso) => CFG.sessions.find((s) => s.iso === iso) || null;
+const courtView = (c) => ({ ...c, icon: KINDS[c.kind]?.icon || '🏓', desc: KINDS[c.kind]?.desc || '' });
+
+// 這個時段的場地：取行事曆裡最後一場的配置（之後的開團最可能沿用）
+function defaultCourts(day) {
+  const list = sessionsOf(day);
+  return (list[list.length - 1] || CFG.sessions[0]).courts;
+}
+
+// 日期沒在行事曆上（例如臨時加開）：依星期判斷時段，價格依體驗期／正式期
+function sessionFor(iso) {
+  const s = sessionAt(iso);
+  if (s) return s;
+  const [y, m, d] = iso.split('-').map(Number);
+  const day = new Date(y, m - 1, d).getDay() === 5 ? 'fri' : 'sun';
+  const firstFormal = formalOf(day)[0];
+  const trial = !!firstFormal && iso < firstFormal.iso;
+  return { iso, day, trial, title: `${DAYS[day].label}${trial ? '體驗暢打' : '分級包場'}`, price: trial ? opsOf(day).trial : opsOf(day).single, courts: defaultCourts(day) };
+}
+
+// ---------- 接龍的時段與場地 ----------
+function chainDay(c) {
+  return DAYS[c?.day] ? c.day : 'sun';
+}
+
+function chainCourts(c) {
+  if (!c?.courts) return LEGACY_COURTS.map(courtView);
+  return Object.entries(c.courts)
+    .map(([no, x]) => courtView({ no, kind: KINDS[x.kind] ? x.kind : '交流', name: x.name, level: x.level }))
+    .sort((a, b) => Number(a.no) - Number(b.no));
+}
+
+const courtNos = (c) => chainCourts(c).map((x) => x.no);
+const courtSize = (c) => opsOf(chainDay(c)).courtSize;
+
 // ---------- 名額計算 ----------
-function cleanRoster(val) {
+// 會員 key：新格式「LINE ID_sun」「LINE ID_fri」（週五、週日分開），舊格式就是 LINE ID（週日、6／7 號場）
+function memberKey(uid, day) {
+  return `${uid}_${day}`;
+}
+
+function normalizeMember(key, m, fallbackName) {
+  if (!m || !PLANS.includes(m.plan) || !/^\d{1,2}$/.test(String(m.court))) return null;
+  const legacy = !key.includes('_');
+  const day = DAYS[m.day] ? m.day : (key.endsWith('_fri') ? 'fri' : 'sun');
+  const rawCourt = String(m.court);
+  return {
+    lineId: key.split('_')[0],
+    name: String(m.name || fallbackName),
+    plan: m.plan,
+    day,
+    rawCourt,
+    court: legacy && !m.day ? (LEGACY_COURT_MAP[rawCourt] || rawCourt) : rawCourt,
+    ts: m.ts || 0,
+  };
+}
+
+function cleanList(val, fallbackName) {
   const out = {};
-  for (const [uid, m] of Object.entries(val || {})) {
-    if (m && COURTS[m.court] && PLANS.includes(m.plan)) out[uid] = { name: String(m.name || '會員'), plan: m.plan, court: String(m.court) };
+  for (const [key, m] of Object.entries(val || {})) {
+    const x = normalizeMember(key, m, fallbackName);
+    if (x) out[key] = x;
   }
   return out;
 }
 
-function cleanApplications(val) {
-  const out = {};
-  for (const [uid, a] of Object.entries(val || {})) {
-    if (a && COURTS[a.court] && PLANS.includes(a.plan)) out[uid] = { name: String(a.name || '球友'), plan: a.plan, court: String(a.court), ts: a.ts || 0 };
-  }
-  return out;
+// 我在某個時段的會員資料（含 key）；舊格式會員只算週日
+function memberOf(uid, day, list = roster) {
+  const key = memberKey(uid, day);
+  if (list[key]) return { key, ...list[key] };
+  if (day === 'sun' && list[uid]?.day === 'sun') return { key: uid, ...list[uid] };
+  return null;
 }
 
 // 依報名時間排序，逐筆佔名額（本人 + 同行朋友）。
@@ -154,17 +195,20 @@ function splitEntries(list, capacity) {
 
 // 單一場地的會員、名額與名單
 function courtData(c, no, members) {
+  const day = chainDay(c);
+  const size = courtSize(c);
+  const court = chainCourts(c).find((x) => x.no === no);
   const list = Object.entries(members)
-    .filter(([, m]) => m.court === no)
-    .map(([uid, m]) => ({ uid, ...m, leave: !!c.leaves?.[uid] }))
+    .filter(([, m]) => m.day === day && (m.court === no || m.rawCourt === no))
+    .map(([key, m]) => ({ uid: key, ...m, leave: !!c.leaves?.[key] }))
     .sort((a, b) => PLANS.indexOf(a.plan) - PLANS.indexOf(b.plan) || a.name.localeCompare(b.name));
   const active = list.filter((m) => !m.leave).length;
-  const cap = Math.max(0, COURT_SIZE - active);
+  const cap = Math.max(0, size - active);
   const entries = Object.entries(c.entries || {})
     .filter(([, e]) => e.court === no)
     .map(([uid, e]) => ({ uid, ...e }));
   const s = splitEntries(entries, cap);
-  return { ...COURTS[no], members: list, active, cap, ...s, total: active + s.used, left: cap - s.used };
+  return { ...court, size, members: list, active, cap, ...s, total: active + s.used, left: cap - s.used };
 }
 
 // 朋友名字（選填）；Firebase 會把陣列存成物件，讀回來統一轉成陣列
@@ -218,7 +262,7 @@ function memberLine(cd) {
 }
 
 function priceOf(c) {
-  return typeof c.price === 'number' ? c.price : DEFAULT_PRICE;
+  return typeof c.price === 'number' ? c.price : opsOf(chainDay(c)).single;
 }
 
 // ---------- Flex Message ----------
@@ -234,8 +278,13 @@ function infoRow(label, value) {
   };
 }
 
+function kickerOf(c) {
+  const day = DAYS[chainDay(c)].label;
+  return c.week ? `進擊的匹克團｜${day}第 ${c.week} 場` : `進擊的匹克團｜${day}`;
+}
+
 function buildChainFlex(c, id, members) {
-  const courts = COURT_NOS.map((no) => courtData(c, no, members));
+  const courts = courtNos(c).map((no) => courtData(c, no, members));
   const rows = [];
   let budget = FLEX_MAX_ROWS;
 
@@ -252,14 +301,14 @@ function buildChainFlex(c, id, members) {
 
   for (const cd of courts) {
     rows.push({ type: 'separator', margin: 'lg' });
-    rows.push({ type: 'text', text: `${cd.no}號場｜${cd.name}　${cd.total}/${COURT_SIZE}`, weight: 'bold', size: 'md', margin: 'lg', wrap: true });
+    rows.push({ type: 'text', text: `${cd.no}號場｜${cd.name}（${cd.level}）　${cd.total}/${cd.size}`, weight: 'bold', size: 'md', margin: 'lg', wrap: true });
     rows.push({ type: 'text', text: memberLine(cd), size: 'sm', color: '#555555', wrap: true });
     addList(`單次正取 ${cd.used}/${cd.cap}`, '#1DB446', cd.confirmed);
     if (!cd.confirmed.length) rows.push({ type: 'text', text: '（還沒有人報名）', size: 'sm', color: '#aaaaaa' });
     if (cd.waitlist.length) addList(`候補 ${cd.waitlist.length} 組`, '#FF8C00', cd.waitlist);
   }
 
-  const alt = courts.map((cd) => `${cd.no}號 ${cd.total}/${COURT_SIZE}`).join('、');
+  const alt = courts.map((cd) => `${cd.no}號 ${cd.total}/${cd.size}`).join('、');
   return {
     type: 'flex',
     altText: `【接龍】${c.title} ${alt}`,
@@ -270,7 +319,7 @@ function buildChainFlex(c, id, members) {
         layout: 'vertical',
         spacing: 'md',
         contents: [
-          { type: 'text', text: c.week ? `🏓 進擊的匹克團｜第 ${c.week} 週` : '🏓 進擊的匹克團', size: 'xs', color: '#1DB446', weight: 'bold' },
+          { type: 'text', text: `🏓 ${kickerOf(c)}`, size: 'xs', color: '#1DB446', weight: 'bold' },
           { type: 'text', text: c.title, weight: 'bold', size: 'xl', wrap: true },
           infoRow('日期', c.date),
           infoRow('時間', c.time),
@@ -304,7 +353,7 @@ function buildChainText(c, id, members) {
     `📍 ${c.place}`,
   ];
   if (c.note) lines.push(`📝 ${c.note}`);
-  for (const no of COURT_NOS) {
+  for (const no of courtNos(c)) {
     const cd = courtData(c, no, members);
     lines.push('', `🏟 ${cd.no}號場｜${cd.name}（${cd.level}）`, memberLine(cd), `✅ 單次正取 ${cd.used}/${cd.cap}`);
     if (!cd.confirmed.length) lines.push('（還沒有人報名）');
@@ -325,7 +374,7 @@ function buildChainText(c, id, members) {
 async function postChain(id, { inChatOnly = false } = {}) {
   const [snap, rSnap] = await Promise.all([get(ref(db, `chains/${id}`)), get(ref(db, 'pkclub/members'))]);
   const c = snap.val();
-  const members = cleanRoster(rSnap.val());
+  const members = cleanList(rSnap.val(), '會員');
   const msg = [buildChainFlex(c, id, members), buildChainText(c, id, members)];
   if (canSendToChat()) {
     await liff.sendMessages(msg);
@@ -348,44 +397,32 @@ function showView(id) {
 }
 
 // ---------- 開團 ----------
-// '2026-11-22' → '11/22（日）'
-function formatDate(value) {
-  const [y, m, d] = value.split('-').map(Number);
-  const weekday = '日一二三四五六'[new Date(y, m - 1, d).getDay()];
-  return `${m}/${d}（${weekday}）`;
+// 選了日期：依試算表帶入時段、活動名稱、地點、價格
+function applyCreateDate(iso) {
+  $('fDate').value = iso;
+  if (!iso) return;
+  const s = sessionFor(iso);
+  createDay = s.day;
+  $('fTitle').value = s.title;
+  $('fPrice').value = s.price;
+  $('fPlace').value = `鹿角 ${s.courts.map((x) => x.no).join('、')}號場`;
+  highlightChip();
+  renderCreateCourts();
 }
 
-function toISO(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-const SEASON_ISO = SEASON.map(toISO);
-
-// 日期早於正式球季開始（3 月）：視為 1～2 月體驗期，預設單次價格用體驗價
-function defaultPriceFor(iso) {
-  return SEASON_ISO.length && iso < SEASON_ISO[0] ? TRIAL_PRICE : DEFAULT_PRICE;
-}
-
-// 日期快選：本季還沒過的週日，點了直接填入日期欄
+// 日期快選：行事曆上還沒過的場次（最近 16 場），點了直接帶入
 function renderDateChips() {
   const today = toISO(new Date());
-  const buttons = SEASON_ISO.map((iso, i) => ({ iso, i })).filter(({ iso }) => iso >= today).map(({ iso, i }) => {
-    const b = el('button', '', `第${i + 1}週 ${formatDate(iso)}`);
+  const buttons = CFG.sessions.filter((s) => s.iso >= today).slice(0, 16).map((s) => {
+    const b = el('button', '', `${formatDate(s.iso)}${s.trial ? ' 體驗' : ''}`);
     b.type = 'button'; // 避免點了就送出表單
-    b.dataset.date = iso;
-    b.addEventListener('click', () => {
-      $('fDate').value = iso;
-      $('fPrice').value = defaultPriceFor(iso);
-      highlightChip();
-    });
+    b.dataset.date = s.iso;
+    b.addEventListener('click', () => applyCreateDate(s.iso));
     return b;
   });
   $('dateChips').replaceChildren(...buttons);
   $('dateChips').hidden = !buttons.length;
-  if (buttons.length && !$('fDate').value) {
-    $('fDate').value = buttons[0].dataset.date;
-    $('fPrice').value = defaultPriceFor(buttons[0].dataset.date);
-  }
+  if (buttons.length && !$('fDate').value) applyCreateDate(buttons[0].dataset.date);
   highlightChip();
 }
 
@@ -397,15 +434,21 @@ function highlightChip() {
 
 // 開團頁的名額表：依會員名單自動算出每面季繳／月繳／單次
 function renderCreateCourts() {
+  if (!CFG) return;
+  const iso = $('fDate').value;
+  const s = iso ? sessionFor(iso) : { day: createDay, courts: defaultCourts(createDay) };
+  const size = opsOf(s.day).courtSize;
+  $('createCourtsLabel').textContent = `場地與名額（${DAYS[s.day].label}・依會員名單帶入）`;
+  $('createCourtsHint').textContent = `每面上限 ${size} 人，共 ${size * s.courts.length} 人；會員請假時名額自動釋出給單次接龍`;
   const head = el('div', '', el('span', '', '場地'), el('span', 'c', '季繳'), el('span', 'c', '月繳'), el('span', 'c', '單次'));
-  const rows = COURT_NOS.map((no) => {
-    const ms = Object.values(roster).filter((m) => m.court === no);
+  const rows = s.courts.map((c) => {
+    const ms = Object.values(roster).filter((m) => m.day === s.day && m.court === c.no);
     const q = ms.filter((m) => m.plan === '季繳').length;
     const mo = ms.filter((m) => m.plan === '月繳').length;
-    const single = el('span', 'c ok', String(Math.max(0, COURT_SIZE - ms.length)));
+    const single = el('span', 'c ok', String(Math.max(0, size - ms.length)));
     single.style.fontWeight = 'bold';
     return el('div', '',
-      el('span', '', el('b', '', `${no}號`), ` ${COURTS[no].name.slice(2)} `, el('span', 'small', COURTS[no].level)),
+      el('span', '', el('b', '', `${c.no}號`), ` ${c.name} `, el('span', 'small', c.level)),
       el('span', 'c', String(q)), el('span', 'c', String(mo)), single);
   });
   $('createCourts').replaceChildren(head, ...rows);
@@ -418,7 +461,8 @@ async function onCreate(ev) {
   setStatus('建立中…');
   try {
     const iso = $('fDate').value;
-    const week = SEASON_ISO.indexOf(iso) + 1;
+    const s = sessionFor(iso);
+    const week = formalOf(s.day).findIndex((x) => x.iso === iso) + 1;
     const newRef = push(ref(db, 'chains'));
     const data = {
       title: $('fTitle').value.trim(),
@@ -426,10 +470,13 @@ async function onCreate(ev) {
       time: $('fTime').value.trim(),
       place: $('fPlace').value.trim(),
       price: Number($('fPrice').value),
+      day: s.day,
+      // 把當天的場地分級存進接龍，之後改試算表也不會影響已開的團
+      courts: Object.fromEntries(s.courts.map((c) => [c.no, { kind: c.kind, name: c.name, level: c.level }])),
       createdAt: serverTimestamp(),
       creator: { id: profile.userId, name: profile.displayName.slice(0, 50) },
     };
-    if (week) data.week = week; // 本季的週日才記週次
+    if (week) data.week = week; // 正式期的場次才記第幾場
     const note = $('fNote').value.trim();
     if (note) data.note = note; // 備註選填，沒填就不存
     await set(newRef, data);
@@ -454,7 +501,7 @@ async function onCreate(ev) {
 
 // ---------- 報名頁 ----------
 function myMember() {
-  return roster[profile.userId] || null;
+  return chain ? memberOf(profile.userId, chainDay(chain)) : null;
 }
 
 // 每人每面場各一筆報名：key 是「LINE ID_場地」；舊資料 key 是 LINE ID，靠 court 欄位區分
@@ -473,22 +520,23 @@ function isMe(e) {
 
 function renderChain() {
   if (!chain) return;
-  const uid = profile.userId;
   const me = myMember();
-  if (!selCourt) selCourt = me?.court || COURT_NOS.find((no) => myEntry(no)) || '6';
+  const nos = courtNos(chain);
+  const size = courtSize(chain);
+  if (!nos.includes(selCourt)) selCourt = (me && nos.includes(me.court) ? me.court : null) || nos.find((no) => myEntry(no)) || nos[0];
 
-  const courts = Object.fromEntries(COURT_NOS.map((no) => [no, courtData(chain, no, roster)]));
+  const courts = Object.fromEntries(nos.map((no) => [no, courtData(chain, no, roster)]));
   const cd = courts[selCourt];
 
   // 標題
-  $('cKicker').textContent = chain.week ? `進擊的匹克團｜第 ${chain.week} 週` : '進擊的匹克團';
+  $('cKicker').textContent = kickerOf(chain);
   $('cTitle').textContent = chain.title;
   $('cInfo').textContent = `${chain.date}　${chain.time}　${chain.place}`;
   $('cNote').textContent = chain.note || '';
   $('cNote').hidden = !chain.note;
 
   // 場地卡片
-  $('courtCards').replaceChildren(...COURT_NOS.map((no) => {
+  $('courtCards').replaceChildren(...nos.map((no) => {
     const c = courts[no];
     const left = el('span', 'left',
       c.left > 0 && !c.waitlist.length ? `單次剩 ${c.left} 位` : c.waitlist.length ? `已額滿・候補 ${c.waitlist.length} 組` : '已額滿・可候補');
@@ -499,12 +547,12 @@ function renderChain() {
     b.addEventListener('click', () => { selCourt = no; setStatus(''); renderChain(); });
     return b;
   }));
-  $('courtDesc').textContent = cd.desc;
+  $('courtDesc').textContent = `${cd.icon} ${cd.desc}`;
 
   // 我的狀態
-  const onLeave = !!chain.leaves?.[uid];
+  const onLeave = !!(me && chain.leaves?.[me.key]);
   // 單次報名狀態（兩面場可以各報一筆）
-  const singleLines = COURT_NOS.filter((no) => myEntry(no)).map((no) => {
+  const singleLines = nos.filter((no) => myEntry(no)).map((no) => {
     const key = entryKey(no);
     const ci = courts[no].confirmed.findIndex((e) => e.uid === key);
     const wi = courts[no].waitlist.findIndex((e) => e.uid === key);
@@ -513,23 +561,25 @@ function renderChain() {
   });
   const lines = [...singleLines];
   if (me) {
-    lines.unshift(onLeave ? `你本週請假，${me.court}號場會員名額已釋出給單次接龍`
-      : `你是 ${me.court}號場${me.plan}會員，本週名額已保留 ✅`);
-    let info = me.plan === '季繳' ? '季繳 1,920 元／12 場' : '月繳 170 元／場';
-    if (me.plan === '月繳' && chain.week) {
-      const d = SEASON[chain.week - 1];
-      const n = SEASON.filter((x) => x.getMonth() === d.getMonth() && x >= d).length;
-      info += `・本月剩 ${n} 場（含本週）`;
+    const dayLabel = DAYS[chainDay(chain)].label;
+    lines.unshift(onLeave ? `你本次請假，${me.court}號場會員名額已釋出給單次接龍`
+      : `你是${dayLabel} ${me.court}號場${me.plan}會員，本次名額已保留 ✅`);
+    const o = opsOf(chainDay(chain));
+    let info = me.plan === '季繳' ? `季繳 ${fmt(o.seasonPer * SEASON_SESSIONS)} 元／${SEASON_SESSIONS} 場` : `月繳 ${o.monthly} 元／場`;
+    const s = chain.week ? formalOf(chainDay(chain))[chain.week - 1] : null;
+    if (me.plan === '月繳' && s) {
+      const n = formalOf(s.day).filter((x) => x.iso.slice(0, 7) === s.iso.slice(0, 7) && x.iso >= s.iso).length;
+      info += `・本月${dayLabel}剩 ${n} 場（含本次）`;
     }
     $('memberInfo').textContent = info;
-    $('leaveBtn').textContent = onLeave ? '取消請假，恢復保留名額' : '本週請假（名額釋出給單次）';
+    $('leaveBtn').textContent = onLeave ? '取消請假，恢復保留名額' : '本次請假（名額釋出給單次）';
     $('leaveBtn').className = onLeave ? '' : 'danger';
   }
   $('myState').textContent = lines.length ? lines.join('\n') : '你還沒報名';
   $('memberBox').hidden = !me;
 
   // 我的報名在資料庫有變（例如在別支手機改過）才重設表單，避免蓋掉正在填的內容
-  const key = JSON.stringify(COURT_NOS.map((no) => myEntry(no)));
+  const key = JSON.stringify(nos.map((no) => myEntry(no)));
   if (key !== formKey) {
     form = formFromEntries();
     formKey = key;
@@ -548,12 +598,13 @@ function renderChain() {
   const attending = cd.members.filter((m) => !m.leave);
   const checkedCount = [...attending, ...cd.confirmed].filter((p) => chain.checkins?.[p.uid]).length;
   $('listTitle').textContent = `${selCourt}號場名單`;
-  $('listTotal').textContent = `共 ${cd.total}/${COURT_SIZE} 人・已簽到 ${checkedCount}/${attending.length + cd.confirmed.length}`;
+  $('listTotal').textContent = `共 ${cd.total}/${size} 人・已簽到 ${checkedCount}/${attending.length + cd.confirmed.length}`;
   $('memberHead').textContent = cd.members.length ? `會員保留 ${cd.active}/${cd.members.length}` : '會員保留（尚未設定）';
   $('memberRows').replaceChildren(...cd.members.map((m, i) => {
+    const mine = m.lineId === profile.userId;
     const badge = el('span', m.plan === '季繳' ? 'badge q' : 'badge', m.plan);
-    const row = el('div', `row${m.uid === uid ? ' me' : ''}${m.leave ? ' off' : ''}`,
-      el('span', 'n', `${i + 1}.`), el('span', 'name', m.uid === uid ? `${m.name}（你）` : m.name), badge);
+    const row = el('div', `row${mine ? ' me' : ''}${m.leave ? ' off' : ''}`,
+      el('span', 'n', `${i + 1}.`), el('span', 'name', mine ? `${m.name}（你）` : m.name), badge);
     if (m.leave) row.append(el('span', 'leaveTag', '請假・名額釋出'));
     else row.append(checkinBtn(m.uid));
     return row;
@@ -570,17 +621,18 @@ function renderChain() {
 }
 
 // ---------- 報名表 ----------
-// form = { self: { 6: bool, 7: bool }, dupr, pay, friends: [{ name, dupr, court }] }
+// form = { self: { 4: bool, 5: bool }, dupr, pay, friends: [{ name, dupr, court }] }
 // 送出時每面場各存成一筆報名：自己有沒有打 + 這面場的朋友
 function formFromEntries() {
-  const mine = COURT_NOS.map((no) => myEntry(no)).filter(Boolean);
+  const nos = courtNos(chain);
+  const mine = nos.map((no) => myEntry(no)).filter(Boolean);
   const f = {
     self: {},
     friends: [],
     pay: mine.map((e) => e.pay).find(Boolean) || 'cash',
     dupr: String(mine.map((e) => e.dupr).find(Boolean) || loadMyDupr() || ''),
   };
-  for (const no of COURT_NOS) {
+  for (const no of nos) {
     const e = myEntry(no);
     f.self[no] = !!e && e.self !== false;
     const names = friendList(e);
@@ -621,8 +673,9 @@ function sameEntry(a, b) {
 
 // 預覽：照表單送出後，每面場會在正取還是候補
 function previewPlacement() {
+  const nos = courtNos(chain);
   const entries = { ...(chain.entries || {}) };
-  for (const no of COURT_NOS) {
+  for (const no of nos) {
     const key = entryKey(no);
     const d = desiredEntry(no);
     const ex = myEntry(no);
@@ -630,7 +683,7 @@ function previewPlacement() {
     else entries[key] = { ...d, ts: ex ? ex.ts : Number.MAX_SAFE_INTEGER }; // 新報名排最後
   }
   const sim = { ...chain, entries };
-  return Object.fromEntries(COURT_NOS.map((no) => {
+  return Object.fromEntries(nos.map((no) => {
     const cd = courtData(sim, no, roster);
     return [no, cd.confirmed.some((e) => e.uid === entryKey(no)) ? '正取' : '候補'];
   }));
@@ -656,9 +709,10 @@ function duprInput(value, onInput) {
 
 function renderSignupForm() {
   const me = myMember();
+  const nos = courtNos(chain);
   const selfRow = el('div', 'srow', el('span', 'who', `${profile.displayName}（你）`),
     duprInput(form.dupr, (v) => { form.dupr = v; }),
-    el('div', 'seg', ...COURT_NOS.map((no) => (me?.court === no
+    el('div', 'seg', ...nos.map((no) => (me?.court === no
       ? segButton(`${no}號 會員`, false, () => {}, true)
       : segButton(`${no}號`, form.self[no], () => { form.self[no] = !form.self[no]; renderSignupForm(); })))));
 
@@ -673,7 +727,7 @@ function renderSignupForm() {
     del.setAttribute('aria-label', '移除這位朋友');
     del.addEventListener('click', () => { form.friends.splice(i, 1); renderSignupForm(); });
     return el('div', 'srow', input, duprInput(f.dupr, (v) => { f.dupr = v; }),
-      el('div', 'seg', ...COURT_NOS.map((no) => segButton(`${no}號`, f.court === no, () => { f.court = no; renderSignupForm(); }))),
+      el('div', 'seg', ...nos.map((no) => segButton(`${no}號`, f.court === no, () => { f.court = no; renderSignupForm(); }))),
       del);
   });
   $('signupRows').replaceChildren(selfRow, ...friendRows);
@@ -686,29 +740,41 @@ function renderSignupForm() {
   renderSignupSummary();
 }
 
+// '3.0+' → [3, 8]；'2.5～2.99' → [2.5, 2.99]；'2.0' → [1, 2.49]（初學）
+function levelRange(level) {
+  const nums = String(level).match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
+  if (!nums.length) return null;
+  if (/\+|以上/.test(level)) return [nums[0], 8];
+  if (nums.length >= 2) return [nums[0], nums[1]];
+  return [1, nums[0] + 0.49];
+}
+
 // DUPR 跟場地建議程度不符時提醒（不擋報名）
 function levelHints() {
+  const courts = chainCourts(chain);
   const people = [
-    ...COURT_NOS.filter((no) => form.self[no]).map((no) => ({ name: '你', dupr: form.dupr, court: no })),
+    ...courts.filter((c) => form.self[c.no]).map((c) => ({ name: '你', dupr: form.dupr, court: c.no })),
     ...form.friends.map((f, i) => ({ name: f.name.trim() || `朋友 ${i + 1}`, dupr: f.dupr, court: f.court })),
   ];
   return people.map((p) => {
     const d = parseDupr(p.dupr);
-    if (!d) return null;
-    const c = COURTS[p.court];
-    const challengeNo = COURT_NOS.find((no) => COURTS[no].name === '進擊挑戰場');
-    if (c.name === '進擊交流場' && d >= 3) return `💡 ${p.name} DUPR ${d}，建議報 ${challengeNo}號場挑戰場`;
-    if (c.name === '進擊挑戰場' && d < 3) return `💡 ${p.name} DUPR ${d}，在 ${p.court}號場屬跨級挑戰`;
+    const c = courts.find((x) => x.no === p.court);
+    const r = c && levelRange(c.level);
+    if (!d || !r) return null;
+    const fit = courts.find((x) => { const xr = levelRange(x.level); return xr && d >= xr[0] && d <= xr[1]; });
+    if (d > r[1]) return `💡 ${p.name} DUPR ${d}，高於 ${c.no}號場建議程度${fit && fit.no !== c.no ? `，建議報 ${fit.no}號場${fit.name}` : ''}`;
+    if (d < r[0]) return c.kind === '挑戰' ? `💡 ${p.name} DUPR ${d}，在 ${c.no}號場屬跨級挑戰` : `💡 ${p.name} DUPR ${d}，低於 ${c.no}號場建議程度${fit && fit.no !== c.no ? `，建議報 ${fit.no}號場${fit.name}` : ''}`;
     return null;
   }).filter(Boolean);
 }
 
 // 摘要：每面場人數、正取或候補、費用、程度提醒；按鈕與付款區
 function renderSignupSummary() {
+  const nos = courtNos(chain);
   const place = previewPlacement();
   const price = priceOf(chain);
   let heads = 0;
-  const lines = COURT_NOS.map((no) => {
+  const lines = nos.map((no) => {
     const n = (form.self[no] ? 1 : 0) + form.friends.filter((f) => f.court === no).length;
     heads += n;
     return n ? `${no}號場 ${n} 人 → ${place[no]}` : null;
@@ -721,13 +787,13 @@ function renderSignupSummary() {
   lines.push(...levelHints());
   $('signupSummary').textContent = lines.join('\n');
 
-  const hasMine = COURT_NOS.some((no) => myEntry(no));
+  const hasMine = nos.some((no) => myEntry(no));
   $('joinBtn').textContent = hasMine ? '更新報名' : '送出報名';
   $('joinBtn').disabled = !heads && !hasMine;
   $('cancelBtn').hidden = !hasMine;
 
   // LINE Pay 付款區：已存成 LINE Pay 的報名，還沒收款的金額
-  const lp = COURT_NOS.map((no) => myEntry(no)).filter((e) => e && e.pay === 'linepay' && !e.paid);
+  const lp = nos.map((no) => myEntry(no)).filter((e) => e && e.pay === 'linepay' && !e.paid);
   const due = lp.reduce((sum, e) => sum + headsOf(e) * price, 0);
   const reported = lp.length > 0 && lp.every((e) => e.payReported);
   $('payBox').hidden = !lp.length;
@@ -745,7 +811,7 @@ function payTag(e) {
 // 回報已用 LINE Pay 付款（標在每一筆 LINE Pay 的報名上）
 async function reportPaid() {
   const changes = {};
-  for (const no of COURT_NOS) {
+  for (const no of courtNos(chain)) {
     const e = myEntry(no);
     if (e && e.pay === 'linepay' && !e.paid) changes[`${entryKey(no)}/payReported`] = true;
   }
@@ -774,9 +840,9 @@ function setBusy(on) {
   if (!on) renderChain(); // 還原 joinBtn 的 disabled 狀態
 }
 
-// 正取名單的指紋：兩面場「未請假的會員 + 單次正取」是誰。只改同行人數、進候補都不會改變它
+// 正取名單的指紋：每面場「未請假的會員 + 單次正取」是誰。只改同行人數、進候補都不會改變它
 function confirmedSig(c, members) {
-  return COURT_NOS.map((no) => {
+  return courtNos(c).map((no) => {
     const cd = courtData(c, no, members);
     return [...cd.members.filter((m) => !m.leave).map((m) => m.uid), '|', ...cd.confirmed.map((e) => e.uid)].join(',');
   }).join('#');
@@ -786,7 +852,7 @@ function confirmedSig(c, members) {
 async function announce(doneMsg, before) {
   try {
     const [snap, rSnap] = await Promise.all([get(ref(db, `chains/${chainId}`)), get(ref(db, 'pkclub/members'))]);
-    if (confirmedSig(snap.val(), cleanRoster(rSnap.val())) === before) {
+    if (confirmedSig(snap.val(), cleanList(rSnap.val(), '會員')) === before) {
       setStatus(`${doneMsg}（正取名單沒變，未發送到聊天室）`);
       return;
     }
@@ -824,7 +890,7 @@ async function join() {
   const changes = {};
   const done = [];
   let removing = false;
-  for (const no of COURT_NOS) {
+  for (const no of courtNos(chain)) {
     const d = desiredEntry(no);
     const ex = myEntry(no);
     if (!d && !ex) continue;
@@ -853,7 +919,7 @@ async function join() {
 async function cancel() {
   if (!confirm('確定要取消你和朋友的全部報名嗎？取消後重新報名會排到最後。')) return;
   const changes = {};
-  for (const no of COURT_NOS) if (myEntry(no)) changes[entryKey(no)] = null;
+  for (const no of courtNos(chain)) if (myEntry(no)) changes[entryKey(no)] = null;
   await writeMyEntries(changes, '已取消全部報名');
 }
 
@@ -869,10 +935,13 @@ async function toggleCheckin(checkinUid) {
   }
 }
 
+// 會員請假：key 是會員 key（週五、週日分開）
 async function toggleLeave() {
-  const on = !chain.leaves?.[profile.userId];
-  if (on && !confirm('確定本週請假嗎？你的名額會釋出給單次接龍。')) return;
-  const leaveRef = ref(db, `chains/${chainId}/leaves/${profile.userId}`);
+  const me = myMember();
+  if (!me) return;
+  const on = !chain.leaves?.[me.key];
+  if (on && !confirm('確定本次請假嗎？你的名額會釋出給單次接龍。')) return;
+  const leaveRef = ref(db, `chains/${chainId}/leaves/${me.key}`);
   const before = confirmedSig(chain, roster);
   setBusy(true);
   setStatus('處理中…');
@@ -929,48 +998,153 @@ function openChain(id) {
   }, (err) => setStatus(`讀取名單失敗：${errText(err)}`));
 }
 
-// ---------- 團資訊 ----------
+// ---------- 團資訊（內容依試算表） ----------
+const monthOf = (iso) => Number(iso.slice(5, 7));
+
+function courtCard(c) {
+  return el('div', 'card',
+    el('div', 'h', `${c.icon} ${c.no}號場｜${c.name} `, el('span', 'ok', c.level)),
+    el('div', 'd', c.desc));
+}
+
+function buildAnnounce() {
+  const o = opsOf('sun');
+  const nos = [...new Set(CFG.sessions.flatMap((s) => s.courts.map((c) => c.no)))].sort((a, b) => a - b);
+  const dayList = DAY_KEYS.filter((d) => sessionsOf(d).length);
+  const dayBlocks = dayList.map((d) => [
+    `📅 ${DAYS[d].label}場`,
+    ...defaultCourts(d).map((c0) => { const c = courtView(c0); return `${c.icon} ${c.no} 號場｜${c.name}　🎯 ${c.level}`; }),
+  ].join('\n'));
+  return `🔥 進擊的匹克團｜2027 雙時段包場計畫 🔥
+
+🏓 1～2 月包場暢打體驗期
+🎉 體驗價只要 ${o.trial} 元／人／次！
+
+📍 地點｜鹿角匹克球場
+📅 時間｜每${dayList.map((d) => DAYS[d].label).join('、')} 19:00～21:00
+🏟️ 場地｜${nos.map((n) => `${n} 號場`).join('、')}
+👥 名額｜每面 ${o.courtSize} 人，每團共 ${o.courtSize * o.courtCount} 人
+
+${dayBlocks.join('\n\n')}
+
+━━━━━━━━━━━━
+
+🏆 3 月起正式推出會員方案（${dayList.map((d) => DAYS[d].label).join('、')}同價、分開報名）
+
+🥇 季繳｜${fmt(o.seasonPer * SEASON_SESSIONS)} 元／${SEASON_SESSIONS} 場
+🥈 月繳｜${o.monthly} 元／場（4 場月份 ${fmt(o.monthly * 4)}、5 場月份 ${fmt(o.monthly * 5)}）
+🥉 單次｜${o.single} 元／場
+
+👥 每面場地名額配置
+▪️ 季繳會員｜${o.seasonSeats / o.courtCount} 人
+▪️ 月繳會員｜${o.monthSeats / o.courtCount} 人
+▪️ 單次報名｜${o.courtSize - (o.seasonSeats + o.monthSeats) / o.courtCount} 人
+
+🎁 固定會員享優先保留名額及挑戰登記權益。
+
+🔥 進擊的匹克團，一起突破自己的極限！`;
+}
+
 function renderInfo() {
-  const cells = MONTHS.map(([m, n]) => el('div', '', el('b', '', `${m}月`), el('span', 'muted', `${n} 場`), el('span', 'ok', `${n * 170} 元`)));
-  const total = el('div', '', el('b', '', '合計'), el('span', 'muted', `${MONTHS.reduce((s, [, n]) => s + n, 0)} 場`));
-  total.style.background = '#f3f8f4';
-  total.style.border = '0';
-  $('monthGrid').replaceChildren(...cells, total);
+  const o = opsOf('sun');
+  const dayList = DAY_KEYS.filter((d) => sessionsOf(d).length);
+  const nos = [...new Set(CFG.sessions.flatMap((s) => s.courts.map((c) => c.no)))].sort((a, b) => a - b);
+  const perCourt = { q: o.seasonSeats / o.courtCount, m: o.monthSeats / o.courtCount };
+  perCourt.s = o.courtSize - perCourt.q - perCourt.m;
+
+  $('infoTime').textContent = `每${dayList.map((d) => DAYS[d].label).join('、')} 19:00–21:00（每次 2 小時）`;
+  $('infoPlace').textContent = `鹿角｜${nos.map((n) => `${n}號場`).join('、')}`;
+  $('infoSeats').textContent = `每面上限 ${o.courtSize} 人，每團 ${o.courtCount} 面共 ${o.courtSize * o.courtCount} 人`;
+  $('infoTrial').textContent = `🎉 1～2 月體驗期：單次 ${o.trial} 元／人／次，不分會員，每面場地可容納 ${o.courtSize} 人。`;
+  $('planSingle').textContent = String(o.single);
+  $('planMonthly').textContent = String(o.monthly);
+  $('planMonthlyNote').textContent = `元／場・4場${fmt(o.monthly * 4)}／5場${fmt(o.monthly * 5)}`;
+  $('planSeason').textContent = fmt(o.seasonPer * SEASON_SESSIONS);
+  $('planSeasonNote').textContent = `元／${SEASON_SESSIONS}場・均${o.seasonPer}`;
+
+  // 場地分級：每個時段一組
+  $('courtLevels').replaceChildren(...dayList.flatMap((d) => [
+    el('div', 'sec', `${DAYS[d].label}場`),
+    ...defaultCourts(d).map((c) => courtCard(courtView(c))),
+  ]));
+
+  // 名額配置
+  $('seatTable').replaceChildren(
+    el('div', '', el('span', '', '類型'), el('span', 'c', '每面'), el('span', 'c', `每團（${o.courtCount}面）`)),
+    ...[['季繳', perCourt.q], ['月繳', perCourt.m], ['單次接龍', perCourt.s], ['合計', o.courtSize]].map(([t, n], i, arr) => {
+      const row = el('div', '', el('span', '', t), el('span', 'c', String(n)), el('span', 'c', String(n * o.courtCount)));
+      if (i === arr.length - 1) row.style.fontWeight = 'bold';
+      return row;
+    }));
+
+  // 每月場次（月繳金額）：週五、週日分開
+  $('monthGrids').replaceChildren(...dayList.flatMap((d) => {
+    const formal = formalOf(d);
+    const months = [...new Set(formal.map((s) => monthOf(s.iso)))];
+    const m = opsOf(d).monthly;
+    const cells = months.map((mo) => {
+      const n = formal.filter((s) => monthOf(s.iso) === mo).length;
+      return el('div', '', el('b', '', `${mo}月`), el('span', 'muted', `${n} 場`), el('span', 'ok', `${fmt(n * m)} 元`));
+    });
+    const total = el('div', '', el('b', '', '合計'), el('span', 'muted', `${formal.length} 場`));
+    total.style.background = '#f3f8f4';
+    total.style.border = '0';
+    return [el('div', 'sec', `${DAYS[d].label}場`), el('div', 'months', ...cells, total)];
+  }));
+
+  $('sheetSource').textContent = CFG.source === 'sheet' ? '📄 以上資訊即時取自團務試算表'
+    : CFG.source === 'cache' ? '📄 試算表暫時讀不到，顯示上次讀到的資料' : '📄 試算表暫時讀不到，顯示內建預設資料';
+  $('sheetLink').href = SHEET_URL;
   $('myId').textContent = profile.userId;
 }
 
 // ---------- 會員申請 ----------
-function renderMembership() {
-  const mine = roster[profile.userId];
-  const myApp = applications[profile.userId];
-  $('memberApplyBox').hidden = !!mine || !!myApp;
-  $('cancelApplyBtn').hidden = !myApp;
+function applyCourts() {
+  return defaultCourts(applyForm.day);
+}
 
-  if (mine) {
-    $('memberStatusBox').hidden = false;
-    $('memberStatusBox').textContent = `你已經是 ${mine.court}號場${mine.plan}會員 ✅`;
-  } else if (myApp) {
-    $('memberStatusBox').hidden = false;
-    $('memberStatusBox').textContent = `你的會員申請審核中：${myApp.court}號場・${myApp.plan}`;
-  } else {
-    $('memberStatusBox').hidden = true;
-    $('applyPlanSeg').replaceChildren(...PLANS.map((p) =>
-      segButton(p, applyForm.plan === p, () => { applyForm.plan = p; renderMembership(); })));
-    $('applyCourtSeg').replaceChildren(...COURT_NOS.map((no) =>
-      segButton(`${no}號`, applyForm.court === no, () => { applyForm.court = no; renderMembership(); })));
-  }
+function renderMembership() {
+  const days = DAY_KEYS.filter((d) => sessionsOf(d).length);
+  const mineAll = days.map((d) => memberOf(profile.userId, d)).filter(Boolean);
+  const appsAll = days.map((d) => memberOf(profile.userId, d, applications)).filter(Boolean);
+  const status = [
+    ...mineAll.map((m) => `你已經是${DAYS[m.day].label} ${m.court}號場${m.plan}會員 ✅`),
+    ...appsAll.map((a) => `你的${DAYS[a.day].label}會員申請審核中：${a.court}號場・${a.plan}`),
+  ];
+  $('memberStatusBox').hidden = !status.length;
+  $('memberStatusBox').textContent = status.join('\n');
+
+  // 申請表單：選時段（已是會員或審核中的時段不能再申請）
+  const taken = new Set([...mineAll, ...appsAll].map((x) => x.day));
+  const open = days.filter((d) => !taken.has(d));
+  $('memberApplyBox').hidden = !open.length;
+  const myApp = memberOf(profile.userId, applyForm.day, applications) || appsAll[0];
+  $('cancelApplyBtn').hidden = !appsAll.length;
+  $('cancelApplyBtn').textContent = appsAll.length ? `取消${DAYS[myApp.day].label}會員申請` : '取消申請';
+  if (!open.length) return;
+  if (!open.includes(applyForm.day)) applyForm.day = open[0];
+  const courts = applyCourts();
+  if (!courts.some((c) => c.no === applyForm.court)) applyForm.court = courts[0]?.no || null;
+  $('applyDaySeg').replaceChildren(...open.map((d) =>
+    segButton(DAYS[d].label, applyForm.day === d, () => { applyForm.day = d; renderMembership(); })));
+  $('applyPlanSeg').replaceChildren(...PLANS.map((p) =>
+    segButton(p, applyForm.plan === p, () => { applyForm.plan = p; renderMembership(); })));
+  $('applyCourtSeg').replaceChildren(...courts.map((c) =>
+    segButton(`${c.no}號 ${c.level}`, applyForm.court === c.no, () => { applyForm.court = c.no; renderMembership(); })));
 }
 
 async function applyMembership() {
+  if (!applyForm.court) return;
   setBusy(true);
   try {
-    await set(ref(db, `pkclub/applications/${profile.userId}`), {
+    await set(ref(db, `pkclub/applications/${memberKey(profile.userId, applyForm.day)}`), {
       name: profile.displayName.slice(0, 50),
       plan: applyForm.plan,
       court: applyForm.court,
+      day: applyForm.day,
       ts: serverTimestamp(),
     });
-    setStatus('已送出會員申請，等團主審核 ✅');
+    setStatus(`已送出${DAYS[applyForm.day].label}會員申請，等團主審核 ✅`);
   } catch (err) {
     console.error(err);
     setStatus(`申請失敗：${errText(err)}`);
@@ -980,10 +1154,12 @@ async function applyMembership() {
 }
 
 async function cancelApplication() {
-  if (!confirm('確定要取消會員申請嗎？')) return;
+  const a = memberOf(profile.userId, applyForm.day, applications)
+    || DAY_KEYS.map((d) => memberOf(profile.userId, d, applications)).find(Boolean);
+  if (!a || !confirm(`確定要取消${DAYS[a.day].label}會員申請嗎？`)) return;
   setBusy(true);
   try {
-    await remove(ref(db, `pkclub/applications/${profile.userId}`));
+    await remove(ref(db, `pkclub/applications/${a.key}`));
     setStatus('已取消申請');
   } catch (err) {
     console.error(err);
@@ -997,32 +1173,36 @@ async function cancelApplication() {
 function renderReview() {
   const list = Object.entries(applications).sort(([, a], [, b]) => (a.ts || 0) - (b.ts || 0));
   $('reviewEmptyHint').hidden = list.length > 0;
-  $('reviewRows').replaceChildren(...list.map(([appUid, a]) => {
-    const occupied = Object.values(roster).filter((m) => m.court === a.court && m.plan === a.plan).length;
+  $('reviewRows').replaceChildren(...list.map(([appKey, a]) => {
+    const dayLabel = DAYS[a.day].label;
+    const o = opsOf(a.day);
+    const occupied = Object.values(roster).filter((m) => m.day === a.day && m.court === a.court && m.plan === a.plan).length;
+    const suggest = (a.plan === '季繳' ? o.seasonSeats : o.monthSeats) / o.courtCount;
     const approveBtn = el('button', 'on', '核准 ✅');
     approveBtn.type = 'button';
     const rejectBtn = el('button', '', '拒絕');
     rejectBtn.type = 'button';
     rejectBtn.style.color = '#e5484d';
     rejectBtn.style.borderColor = '#e5484d';
-    approveBtn.addEventListener('click', () => approveApplication(appUid, a));
-    rejectBtn.addEventListener('click', () => rejectApplication(appUid, a));
+    approveBtn.addEventListener('click', () => approveApplication(appKey, a));
+    rejectBtn.addEventListener('click', () => rejectApplication(appKey, a));
     return el('div', 'card',
-      el('div', 'h', `${a.name}　申請 ${a.court}號場・${a.plan}`),
-      el('div', 'd', `目前 ${a.court}號場${a.plan}會員 ${occupied} 人（建議 2 人）`),
+      el('div', 'h', `${a.name}　申請${dayLabel} ${a.court}號場・${a.plan}`),
+      el('div', 'd', `目前${dayLabel} ${a.court}號場${a.plan}會員 ${occupied} 人（建議 ${suggest} 人）`),
       el('div', 'seg', approveBtn, rejectBtn));
   }));
 }
 
-async function approveApplication(appUid, a) {
-  if (!confirm(`核准 ${a.name}（${a.court}號場・${a.plan}）成為會員嗎？`)) return;
+async function approveApplication(appKey, a) {
+  const dayLabel = DAYS[a.day].label;
+  if (!confirm(`核准 ${a.name}（${dayLabel} ${a.court}號場・${a.plan}）成為會員嗎？`)) return;
   setBusy(true);
   try {
     await update(ref(db, 'pkclub'), {
-      [`members/${appUid}`]: { name: a.name, plan: a.plan, court: a.court },
-      [`applications/${appUid}`]: null,
+      [`members/${memberKey(a.lineId, a.day)}`]: { name: a.name, plan: a.plan, court: a.court, day: a.day },
+      [`applications/${appKey}`]: null,
     });
-    setStatus(`已核准 ${a.name} 成為會員`);
+    setStatus(`已核准 ${a.name} 成為${dayLabel}會員`);
   } catch (err) {
     console.error(err);
     setStatus(`核准失敗：${errText(err)}`);
@@ -1031,11 +1211,11 @@ async function approveApplication(appUid, a) {
   }
 }
 
-async function rejectApplication(appUid, a) {
+async function rejectApplication(appKey, a) {
   if (!confirm(`確定要拒絕 ${a.name} 的申請嗎？`)) return;
   setBusy(true);
   try {
-    await remove(ref(db, `pkclub/applications/${appUid}`));
+    await remove(ref(db, `pkclub/applications/${appKey}`));
     setStatus(`已拒絕 ${a.name} 的申請`);
   } catch (err) {
     console.error(err);
@@ -1063,7 +1243,7 @@ function bindEvents() {
     b.addEventListener('click', () => showView(b.dataset.view));
   });
   $('createForm').addEventListener('submit', onCreate);
-  $('fDate').addEventListener('change', () => { $('fPrice').value = defaultPriceFor($('fDate').value); highlightChip(); });
+  $('fDate').addEventListener('change', () => applyCreateDate($('fDate').value));
   $('addFriendBtn').addEventListener('click', addFriend);
   $('payDoneBtn').addEventListener('click', reportPaid);
   $('joinBtn').addEventListener('click', join);
@@ -1071,7 +1251,7 @@ function bindEvents() {
   $('leaveBtn').addEventListener('click', toggleLeave);
   $('shareListBtn').addEventListener('click', shareList);
   $('copyAnnounceBtn').addEventListener('click', async () => {
-    await copyText(ANNOUNCE);
+    await copyText(buildAnnounce());
     setStatus('已複製招募公告，可貼到 LINE 群組 ✅');
   });
   $('copyIdBtn').addEventListener('click', async () => {
@@ -1083,6 +1263,8 @@ function bindEvents() {
 }
 
 async function main() {
+  // 試算表跟 LIFF 登入同時進行，省等待時間
+  const cfgPromise = loadConfig();
   try {
     await liff.init({ liffId: LIFF_ID });
   } catch (err) {
@@ -1109,9 +1291,11 @@ async function main() {
     setStatus('無法取得 LINE 個人資料，請確認 LIFF 有勾選 profile 權限');
     return;
   }
+  CFG = await cfgPromise;
 
   bindEvents();
   showOpenInLine();
+  $('fTime').value = DEFAULT_TIME;
   $('fDate').min = toISO(new Date()); // 不能選過去的日期
   renderDateChips();
   renderCreateCourts();
@@ -1121,7 +1305,7 @@ async function main() {
 
   // 會員名單即時同步（團主審核通過，或在 Firebase 後台改名單，頁面會自動更新）
   onValue(ref(db, 'pkclub/members'), (snap) => {
-    roster = cleanRoster(snap.val());
+    roster = cleanList(snap.val(), '會員');
     renderCreateCourts();
     renderMembership();
     if (chain) renderChain();
@@ -1130,7 +1314,7 @@ async function main() {
 
   // 會員申請即時同步
   onValue(ref(db, 'pkclub/applications'), (snap) => {
-    applications = cleanApplications(snap.val());
+    applications = cleanList(snap.val(), '球友');
     renderMembership();
     if (!$('reviewView').hidden) renderReview();
   }, (err) => console.error('讀取會員申請失敗', err));
