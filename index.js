@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=16';
+import { loadConfig, DAYS, DAY_KEYS, KINDS, SHEET_URL } from './sheet.js?v=17';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -836,7 +836,7 @@ function addFriend() {
 }
 
 function setBusy(on) {
-  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'payDoneBtn', 'leaveBtn', 'shareListBtn', 'applyBtn', 'cancelApplyBtn'].forEach((id) => { $(id).disabled = on; });
+  ['joinBtn', 'cancelBtn', 'addFriendBtn', 'payDoneBtn', 'leaveBtn', 'shareListBtn', 'applyBtn', 'cancelApplyBtn', 'quitMemberBtn'].forEach((id) => { $(id).disabled = on; });
   if (!on) renderChain(); // 還原 joinBtn 的 disabled 狀態
 }
 
@@ -1103,34 +1103,54 @@ function applyCourts() {
   return defaultCourts(applyForm.day);
 }
 
+// 週五、週日兩個時段都一直顯示；依選到的時段顯示：申請表單／審核中（可取消）／已是會員（可退出）
 function renderMembership() {
-  const days = DAY_KEYS.filter((d) => sessionsOf(d).length);
-  const mineAll = days.map((d) => memberOf(profile.userId, d)).filter(Boolean);
-  const appsAll = days.map((d) => memberOf(profile.userId, d, applications)).filter(Boolean);
-  const status = [
-    ...mineAll.map((m) => `你已經是${DAYS[m.day].label} ${m.court}號場${m.plan}會員 ✅`),
-    ...appsAll.map((a) => `你的${DAYS[a.day].label}會員申請審核中：${a.court}號場・${a.plan}`),
-  ];
-  $('memberStatusBox').hidden = !status.length;
-  $('memberStatusBox').textContent = status.join('\n');
+  const days = DAY_KEYS.filter((d) => DAYS[d]);
+  if (!days.includes(applyForm.day)) applyForm.day = days[0];
+  const mine = memberOf(profile.userId, applyForm.day);
+  const app = mine ? null : memberOf(profile.userId, applyForm.day, applications);
+  const label = DAYS[applyForm.day].label;
 
-  // 申請表單：選時段（已是會員或審核中的時段不能再申請）
-  const taken = new Set([...mineAll, ...appsAll].map((x) => x.day));
-  const open = days.filter((d) => !taken.has(d));
-  $('memberApplyBox').hidden = !open.length;
-  const myApp = memberOf(profile.userId, applyForm.day, applications) || appsAll[0];
-  $('cancelApplyBtn').hidden = !appsAll.length;
-  $('cancelApplyBtn').textContent = appsAll.length ? `取消${DAYS[myApp.day].label}會員申請` : '取消申請';
-  if (!open.length) return;
-  if (!open.includes(applyForm.day)) applyForm.day = open[0];
+  $('applyDaySeg').replaceChildren(...days.map((d) => {
+    const tag = memberOf(profile.userId, d) ? '・會員' : memberOf(profile.userId, d, applications) ? '・審核中' : '';
+    return segButton(`${DAYS[d].label}${tag}`, applyForm.day === d, () => { applyForm.day = d; renderMembership(); });
+  }));
+
+  $('memberStatusBox').hidden = !mine && !app;
+  $('memberStatusBox').textContent = mine ? `你是${label} ${mine.court}號場${mine.plan}會員 ✅`
+    : app ? `你的${label}會員申請審核中：${app.court}號場・${app.plan}` : '';
+  $('quitMemberBtn').hidden = !mine;
+  $('quitMemberBtn').textContent = `退出${label}會員`;
+  $('cancelApplyBtn').hidden = !app;
+  $('cancelApplyBtn').textContent = `取消${label}會員申請`;
+  $('memberApplyBox').hidden = !!(mine || app);
+  if (mine || app) return;
+
   const courts = applyCourts();
   if (!courts.some((c) => c.no === applyForm.court)) applyForm.court = courts[0]?.no || null;
-  $('applyDaySeg').replaceChildren(...open.map((d) =>
-    segButton(DAYS[d].label, applyForm.day === d, () => { applyForm.day = d; renderMembership(); })));
   $('applyPlanSeg').replaceChildren(...PLANS.map((p) =>
     segButton(p, applyForm.plan === p, () => { applyForm.plan = p; renderMembership(); })));
   $('applyCourtSeg').replaceChildren(...courts.map((c) =>
     segButton(`${c.no}號 ${c.level}`, applyForm.court === c.no, () => { applyForm.court = c.no; renderMembership(); })));
+  $('applyBtn').textContent = `送出${label}會員申請`;
+}
+
+// 退出會員：從會員名單刪除，之後的團就不再保留名額
+async function quitMembership() {
+  const m = memberOf(profile.userId, applyForm.day);
+  if (!m) return;
+  const label = DAYS[m.day].label;
+  if (!confirm(`確定要退出${label}會員（${m.court}號場・${m.plan}）嗎？退出後不再保留名額，要重新申請才能恢復。`)) return;
+  setBusy(true);
+  try {
+    await remove(ref(db, `pkclub/members/${m.key}`));
+    setStatus(`已退出${label}會員`);
+  } catch (err) {
+    console.error(err);
+    setStatus(`退出失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function applyMembership() {
@@ -1154,8 +1174,7 @@ async function applyMembership() {
 }
 
 async function cancelApplication() {
-  const a = memberOf(profile.userId, applyForm.day, applications)
-    || DAY_KEYS.map((d) => memberOf(profile.userId, d, applications)).find(Boolean);
+  const a = memberOf(profile.userId, applyForm.day, applications);
   if (!a || !confirm(`確定要取消${DAYS[a.day].label}會員申請嗎？`)) return;
   setBusy(true);
   try {
@@ -1260,6 +1279,7 @@ function bindEvents() {
   });
   $('applyBtn').addEventListener('click', applyMembership);
   $('cancelApplyBtn').addEventListener('click', cancelApplication);
+  $('quitMemberBtn').addEventListener('click', quitMembership);
 }
 
 async function main() {

@@ -243,10 +243,10 @@
         <button id="copyAnnounceBtn" class="secondary" style="margin-top:16px">複製 LINE 招募公告</button>
 
         <div class="h2">會員申請</div>
+        <div class="muted" style="font-size:13px;margin-top:4px">申請固定會員，團主審核通過後即可保留名額、享有請假與優先權益。週五、週日要分開申請。</div>
+        <label class="sub">選擇時段</label>
+        <div id="applyDaySeg" class="seg" style="margin-top:4px"></div>
         <div id="memberApplyBox">
-            <div class="muted" style="font-size:13px;margin-top:4px">申請固定會員，團主審核通過後即可保留名額、享有請假與優先權益。週五、週日要分開申請。</div>
-            <label class="sub">選擇時段</label>
-            <div id="applyDaySeg" class="seg" style="margin-top:4px"></div>
             <label class="sub">選擇方案</label>
             <div id="applyPlanSeg" class="seg" style="margin-top:4px"></div>
             <label class="sub">選擇場地</label>
@@ -255,6 +255,7 @@
         </div>
         <div id="memberStatusBox" class="muted" style="font-size:14px;margin-top:8px;white-space:pre-line" hidden></div>
         <button id="cancelApplyBtn" class="danger" hidden>取消申請</button>
+        <button id="quitMemberBtn" class="danger" hidden>退出會員</button>
 
         <div class="h2" style="margin-top:24px">會員綁定（進階）</div>
         <div class="muted" style="font-size:13px;margin-top:4px">團主也可以直接把下面的 ID 貼到 Firebase 手動加入會員名單。</div>
@@ -293,6 +294,6 @@
 </script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=16"></script>
+<script type="module" src="index.js?v=17"></script>
 </body>
 </html>
