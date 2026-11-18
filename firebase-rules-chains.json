@@ -29,6 +29,7 @@
     },
     "chains": {
       ".read": true,
+      ".indexOn": ["createdAt"],
       "$chainId": {
         ".read": true,
         ".write": "!data.exists()",

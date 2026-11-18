@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=20';
+import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=21';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -330,24 +330,34 @@ function buildChainFlex(c, id, members) {
           ...rows,
         ],
       },
+      // 這張卡是報名者用 LIFF 發的，LINE 規定按鈕只能開網址；要在聊天室一鍵取消，請在群組輸入「取消報名」，
+      // LINE 機器人（pickleball-line-bot）會直接取消並回一張帶一鍵取消按鈕的名單卡
       footer: {
         type: 'box',
-        layout: 'horizontal',
+        layout: 'vertical',
         spacing: 'sm',
         contents: [
           {
-            type: 'button',
-            style: 'primary',
-            color: '#1DB446',
-            flex: 3,
-            action: { type: 'uri', label: '我要報名 / 修改', uri: chainUrl(id) },
+            type: 'box',
+            layout: 'horizontal',
+            spacing: 'sm',
+            contents: [
+              {
+                type: 'button',
+                style: 'primary',
+                color: '#1DB446',
+                flex: 3,
+                action: { type: 'uri', label: '我要報名 / 修改', uri: chainUrl(id) },
+              },
+              {
+                type: 'button',
+                style: 'secondary',
+                flex: 2,
+                action: { type: 'uri', label: '取消報名', uri: chainUrl(id, 'cancel') },
+              },
+            ],
           },
-          {
-            type: 'button',
-            style: 'secondary',
-            flex: 2,
-            action: { type: 'uri', label: '取消報名', uri: chainUrl(id, 'cancel') },
-          },
+          { type: 'text', text: '💬 也可以在群組輸入「取消報名」或「請假」', size: 'xxs', color: '#aaaaaa', align: 'center' },
         ],
       },
     },
