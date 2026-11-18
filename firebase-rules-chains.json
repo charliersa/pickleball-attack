@@ -28,6 +28,7 @@
       }
     },
     "chains": {
+      ".read": true,
       "$chainId": {
         ".read": true,
         ".write": "!data.exists()",

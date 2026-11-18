@@ -7,8 +7,7 @@
  * - 原本的分頁（營運總覽、2027場次行事曆…）不會被動到
  * - 試算表選單「進擊的匹克團」：立即同步／開啟自動同步（每 10 分鐘）／停止自動同步
  *
- * 讀取權限：預設用目前 Google 帳號的身分讀 Firebase（帳號需是 Firebase 專案 pickleball-ad66b 的擁有者或編輯者）。
- * 如果帳號不同，可改用資料庫密鑰：專案設定 → 指令碼屬性 新增 FIREBASE_SECRET（Firebase 專案設定 → 服務帳戶 → 資料庫密鑰）。
+ * 讀取權限：先試目前 Google 帳號的 Firebase 權限，被拒絕就改用公開讀取（資料庫規則 chains 需有 ".read": true）。
  */
 
 const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -48,16 +47,23 @@ function toast(msg) {
 }
 
 // ---------- 讀 Firebase ----------
+// 依序嘗試：指令碼屬性 FIREBASE_SECRET → 目前 Google 帳號的權限 → 公開讀取（資料庫規則有開放 .read 的節點）
+let oauthFailed = false;
 function fetchDb(path) {
   const secret = PropertiesService.getScriptProperties().getProperty('FIREBASE_SECRET');
-  const url = `${DB_URL}/${path}.json${secret ? `?auth=${encodeURIComponent(secret)}` : ''}`;
-  const opt = { muteHttpExceptions: true };
-  if (!secret) opt.headers = { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` };
-  const res = UrlFetchApp.fetch(url, opt);
-  if (res.getResponseCode() !== 200) {
-    throw new Error(`讀取 Firebase「${path}」失敗（HTTP ${res.getResponseCode()}）：${res.getContentText().slice(0, 200)}`);
+  const tries = [];
+  if (secret) tries.push({ url: `${DB_URL}/${path}.json?auth=${encodeURIComponent(secret)}`, opt: {} });
+  if (!oauthFailed) tries.push({ url: `${DB_URL}/${path}.json`, opt: { headers: { Authorization: `Bearer ${ScriptApp.getOAuthToken()}` } }, oauth: true });
+  tries.push({ url: `${DB_URL}/${path}.json`, opt: {} });
+  let last = null;
+  for (const t of tries) {
+    const res = UrlFetchApp.fetch(t.url, Object.assign({ muteHttpExceptions: true }, t.opt));
+    if (res.getResponseCode() === 200) return JSON.parse(res.getContentText()) || {};
+    if (t.oauth) oauthFailed = true; // 帳號沒有 Firebase 權限，之後直接改用公開讀取
+    last = res;
   }
-  return JSON.parse(res.getContentText()) || {};
+  throw new Error(`讀取 Firebase「${path}」失敗（HTTP ${last.getResponseCode()}）：${last.getContentText().slice(0, 200)}`
+    + '\n請確認 Firebase 資料庫規則已發布最新版（chains 要有 ".read": true）');
 }
 
 // ---------- 跟網站相同的名額邏輯（index.js） ----------
@@ -159,10 +165,9 @@ function syncAll() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) return; // 上一次同步還沒跑完
   try {
-    const pk = fetchDb('pkclub');
+    const members = cleanList(fetchDb('pkclub/members'));
+    const apps = cleanList(fetchDb('pkclub/applications'));
     const chains = fetchDb('chains');
-    const members = cleanList(pk.members);
-    const apps = cleanList(pk.applications);
     const sizes = readCourtSizes();
     const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm');
 
