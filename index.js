@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=19';
+import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=20';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -59,8 +59,9 @@ function el(tag, cls, ...children) {
   return e;
 }
 
-function chainUrl(id) {
-  return `https://liff.line.me/${LIFF_ID}?e=${encodeURIComponent(id)}`;
+// action = 'cancel'：從群組圖卡的「取消報名」按鈕開啟，載入後直接詢問是否取消
+function chainUrl(id, action) {
+  return `https://liff.line.me/${LIFF_ID}?e=${encodeURIComponent(id)}${action ? `&a=${action}` : ''}`;
 }
 
 function canSendToChat() {
@@ -331,13 +332,21 @@ function buildChainFlex(c, id, members) {
       },
       footer: {
         type: 'box',
-        layout: 'vertical',
+        layout: 'horizontal',
+        spacing: 'sm',
         contents: [
           {
             type: 'button',
             style: 'primary',
             color: '#1DB446',
+            flex: 3,
             action: { type: 'uri', label: '我要報名 / 修改', uri: chainUrl(id) },
+          },
+          {
+            type: 'button',
+            style: 'secondary',
+            flex: 2,
+            action: { type: 'uri', label: '取消報名', uri: chainUrl(id, 'cancel') },
           },
         ],
       },
@@ -969,8 +978,24 @@ function openChain(id) {
     if (first) {
       if ($('status').textContent === '載入名單中…') setStatus('');
       first = false;
+      runPendingAction();
     }
   }, (err) => setStatus(`讀取名單失敗：${errText(err)}`));
+}
+
+// 從群組圖卡「取消報名」開啟：名單與會員名單都載入後執行一次
+// 有單次報名 → 取消全部報名；沒有報名但是會員 → 本次請假
+let pendingAction = null;
+let rosterLoaded = false;
+async function runPendingAction() {
+  if (pendingAction !== 'cancel' || !chain || !rosterLoaded) return;
+  pendingAction = null;
+  history.replaceState(null, '', `?e=${encodeURIComponent(chainId)}`); // 重新整理時不要再跳一次
+  const hasEntry = courtNos(chain).some((no) => myEntry(no));
+  const me = myMember();
+  if (hasEntry) await cancel();
+  else if (me && !chain.leaves?.[me.key]) await toggleLeave();
+  else setStatus(me ? '你本次已經請假了' : '你目前沒有報名這一場，不需要取消');
 }
 
 // ---------- 團資訊（內容依試算表） ----------
@@ -1301,10 +1326,12 @@ async function main() {
   // 會員名單即時同步（團主審核通過，或在 Firebase 後台改名單，頁面會自動更新）
   onValue(ref(db, 'pkclub/members'), (snap) => {
     roster = cleanList(snap.val(), '會員');
+    rosterLoaded = true;
     renderCreateCourts();
     renderMembership();
     if (chain) renderChain();
     if (!$('reviewView').hidden) renderReview();
+    runPendingAction();
   }, (err) => console.error('讀取會員名單失敗', err));
 
   // 會員申請即時同步
@@ -1315,8 +1342,10 @@ async function main() {
   }, (err) => console.error('讀取會員申請失敗', err));
 
   // liff.init 完成後網址才會還原成 ?e=xxx
-  const id = new URLSearchParams(location.search).get('e');
+  const params = new URLSearchParams(location.search);
+  const id = params.get('e');
   if (id) {
+    pendingAction = params.get('a');
     openChain(id);
     showView('chainView');
     setStatus('載入名單中…');
