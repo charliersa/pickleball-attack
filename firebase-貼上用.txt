@@ -1,0 +1,29 @@
+【步驟 1】更新資料庫規則
+到 Firebase 後台 → Realtime Database → 規則，
+把原本的 "pkclub": { ... } 和 "chains": { ... } 兩段，換成 firebase-rules-chains.json 裡的同名兩段（其他規則不要動），然後按「發布」。
+
+【步驟 2】建立會員名單（一般用網站的「會員申請 → 會員審核」即可，不用手動）
+週五、週日的會員分開，key 是「LINE ID_sun」或「LINE ID_fri」：
+
+pkclub
+  members
+    <LINE ID>_sun           ← 週日會員（週五會員用 <LINE ID>_fri）
+      name:  "阿哲"
+      plan:  "季繳"          ← 只能填 "季繳" 或 "月繳"
+      court: "4"             ← 場地號碼（字串），要跟試算表行事曆的場地一致
+      day:   "sun"           ← 要跟 key 結尾一致："sun" 或 "fri"
+
+會員的 LINE ID 在「團資訊」分頁最下面按「複製我的 ID」取得。
+每面場建議季繳 2 人、月繳 2 人；單次名額 = 8 − 該場未請假的會員數，自動計算。
+舊格式（key 只有 LINE ID、court "6"／"7"、沒有 day）仍可使用，會自動視為週日 4／5 號場會員。
+
+匯入 JSON 範例：
+{
+  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1_sun": { "name": "阿哲", "plan": "季繳", "court": "4", "day": "sun" },
+  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1_fri": { "name": "阿哲", "plan": "月繳", "court": "4", "day": "fri" },
+  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx2_fri": { "name": "小葉", "plan": "季繳", "court": "5", "day": "fri" }
+}
+（匯入時要先點到 pkclub/members 那一層再匯入，不然會蓋掉整個資料庫！）
+
+【步驟 3】放 Logo
+把 logo 存成 assets/logo.png 一起上傳（沒有的話頁面會自動隱藏 logo）。
