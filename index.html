@@ -81,6 +81,8 @@
         .payTag.rep { color: #FF8C00; border: 1px solid #FF8C00; }
         .payTag.paid { color: #fff; background: #06C755; border: 1px solid #06C755; }
         .leaveTag { font-size: 12px; color: #FF8C00; font-weight: normal; }
+        .row .removeBtn { width: auto; margin: 0 0 0 auto; padding: 4px 10px; font-size: 13px; flex: none;
+                           background: #fff; color: #e5484d; border: 1px solid #e5484d; }
         .checkin { width: 24px; height: 24px; margin: 0 0 0 auto; padding: 0; flex: none;
                    border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #06C755;
                    font-size: 14px; line-height: 22px; }
@@ -124,7 +126,7 @@
         <button data-view="chainView" hidden>報名頁</button>
         <button data-view="createView">開團</button>
         <button data-view="infoView">團資訊</button>
-        <button data-view="reviewView">會員審核</button>
+        <button data-view="reviewView">會員管理</button>
     </nav>
 
     <!-- 報名頁：有 ?e=<接龍ID> 時顯示 -->
@@ -263,12 +265,18 @@
         <button id="copyIdBtn" class="secondary">複製我的 ID</button>
     </section>
 
-    <!-- 會員審核：團主用，審核大家送出的會員申請 -->
+    <!-- 會員管理：團主用，審核會員申請、移除會員 -->
     <section id="reviewView" hidden>
-        <h1 style="margin-top:20px">會員審核</h1>
-        <div class="muted" style="font-size:14px">審核大家送出的會員申請，核准後會寫進會員名單、自動保留名額。</div>
+        <h1 style="margin-top:20px">會員管理</h1>
+        <div class="h2" style="margin-top:8px">待審核申請</div>
+        <div class="muted" style="font-size:14px">核准後會寫進會員名單、自動保留名額。</div>
         <div id="reviewEmptyHint" class="muted" style="color:#aaa;margin:16px 0" hidden>目前沒有待審核的申請。</div>
         <div id="reviewRows" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"></div>
+
+        <div class="h2" style="margin-top:28px">會員名單</div>
+        <div class="muted" style="font-size:14px">移除後，之後的團不再保留這位會員的名額（已開的團也會立刻釋出給單次接龍）。</div>
+        <div id="rosterEmptyHint" class="muted" style="color:#aaa;margin:16px 0" hidden>目前沒有會員。</div>
+        <div id="rosterRows"></div>
     </section>
 
     <p id="status">載入中…</p>
@@ -294,6 +302,6 @@
 </script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=21"></script>
+<script type="module" src="index.js?v=22"></script>
 </body>
 </html>

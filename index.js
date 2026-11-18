@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=21';
+import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=22';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -1220,6 +1220,46 @@ function renderReview() {
       el('div', 'd', `目前${dayLabel} ${a.court}號場${a.plan}會員 ${occupied} 人（建議 ${suggest} 人）`),
       el('div', 'seg', approveBtn, rejectBtn));
   }));
+  renderRosterAdmin();
+}
+
+// 會員名單（團主用）：依時段、場地分組，每位會員可移除
+function renderRosterAdmin() {
+  const all = Object.entries(roster).map(([key, m]) => ({ key, ...m }));
+  $('rosterEmptyHint').hidden = all.length > 0;
+  const groups = [];
+  for (const day of DAY_KEYS) {
+    const courts = [...new Set(all.filter((m) => m.day === day).map((m) => m.court))].sort((a, b) => a - b);
+    for (const no of courts) {
+      const ms = all.filter((m) => m.day === day && m.court === no)
+        .sort((a, b) => PLANS.indexOf(a.plan) - PLANS.indexOf(b.plan) || a.name.localeCompare(b.name));
+      const court = defaultCourts(day).find((c) => c.no === no);
+      groups.push(el('div', 'sec', `${DAYS[day].label} ${no}號場${court ? `｜${court.name}` : ''}（${ms.length} 人）`));
+      groups.push(el('div', 'rows', ...ms.map((m, i) => {
+        const del = el('button', 'removeBtn', '移除');
+        del.type = 'button';
+        del.addEventListener('click', () => removeMember(m));
+        return el('div', 'row', el('span', 'n', `${i + 1}.`), el('span', 'name', m.name),
+          el('span', m.plan === '季繳' ? 'badge q' : 'badge', m.plan), del);
+      })));
+    }
+  }
+  $('rosterRows').replaceChildren(...groups);
+}
+
+async function removeMember(m) {
+  const label = `${DAYS[m.day].label} ${m.court}號場・${m.plan}`;
+  if (!confirm(`確定要把 ${m.name}（${label}）從會員名單移除嗎？\n移除後不再保留名額，要重新申請才能恢復。`)) return;
+  setBusy(true);
+  try {
+    await remove(ref(db, `pkclub/members/${m.key}`));
+    setStatus(`已移除會員 ${m.name}（${label}）`);
+  } catch (err) {
+    console.error(err);
+    setStatus(`移除失敗：${errText(err)}`);
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function approveApplication(appKey, a) {
