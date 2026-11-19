@@ -12,7 +12,7 @@
         :root {
             color-scheme: dark;
             --bg: #07122b5e;
-            --panel: rgba(9, 20, 48, .42);
+            --panel: rgba(9, 20, 48, .80); /* 卡片底色濃度 80%＝透明度 20% */
             --panel-2: rgba(255, 255, 255, .05);
             --line: rgba(255, 255, 255, .14);
             --line-gold: rgba(255, 196, 84, .35);
@@ -111,7 +111,7 @@
 
         /* ===== 公告欄 ===== */
         #noticeBoard { padding: 12px 16px; border-color: var(--line-gold);
-                       background: linear-gradient(180deg, rgba(255, 180, 50, .16), rgba(9, 20, 48, .42) 70%); }
+                       background: linear-gradient(180deg, rgba(255, 180, 50, .16), var(--panel) 70%); }
         #noticeBoard .nbHead { display: flex; justify-content: space-between; align-items: baseline;
                                font-weight: 700; font-size: 15px; color: var(--gold); }
         .notice { padding: 10px 0; font-size: 14px; line-height: 1.6; }
