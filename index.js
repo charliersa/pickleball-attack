@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=23';
+import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=24';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -539,7 +539,7 @@ function renderChain() {
     const c = courts[no];
     const left = el('span', 'left',
       c.left > 0 && !c.waitlist.length ? `單次剩 ${c.left} 位` : c.waitlist.length ? `已額滿・候補 ${c.waitlist.length} 組` : '已額滿・可候補');
-    left.style.color = c.left > 0 && !c.waitlist.length ? '#1DB446' : '#FF8C00';
+    left.classList.add(c.left > 0 && !c.waitlist.length ? 'ok' : 'wait');
     const b = el('button', no === selCourt ? 'on' : '',
       el('span', 't', `${no}號場｜${c.name}`), el('span', 'lv', `建議程度 ${c.level}`), left);
     b.type = 'button';
@@ -1102,8 +1102,7 @@ function renderInfo() {
       return el('div', '', el('b', '', `${mo}月`), el('span', 'muted', `${n} 場`), el('span', 'ok', `${fmt(n * m)} 元`));
     });
     const total = el('div', '', el('b', '', '合計'), el('span', 'muted', `${formal.length} 場`));
-    total.style.background = '#f3f8f4';
-    total.style.border = '0';
+    total.className = 'sum';
     return [el('div', 'sec', `${DAYS[d].label}場`), el('div', 'months', ...cells, total)];
   }));
 
@@ -1214,10 +1213,8 @@ function renderReview() {
     const suggest = (a.plan === '季繳' ? o.seasonSeats : o.monthSeats) / o.courtCount;
     const approveBtn = el('button', 'on', '核准 ✅');
     approveBtn.type = 'button';
-    const rejectBtn = el('button', '', '拒絕');
+    const rejectBtn = el('button', 'no', '拒絕');
     rejectBtn.type = 'button';
-    rejectBtn.style.color = '#e5484d';
-    rejectBtn.style.borderColor = '#e5484d';
     approveBtn.addEventListener('click', () => approveApplication(appKey, a));
     rejectBtn.addEventListener('click', () => rejectApplication(appKey, a));
     return el('div', 'card',
@@ -1374,9 +1371,9 @@ function renderNoticeBoard() {
 // 團主管理：公告列表（編輯／置頂／刪除）
 function renderNoticeAdmin() {
   $('noticeAdminRows').replaceChildren(...sortedNotices().map((n) => {
-    const btn = (text, onClick, color) => {
+    const btn = (text, onClick, cls) => {
       const b = segButton(text, false, onClick);
-      if (color) { b.style.color = color; b.style.borderColor = color; }
+      if (cls) b.classList.add(cls);
       return b;
     };
     const card = el('div', 'card',
@@ -1385,8 +1382,8 @@ function renderNoticeAdmin() {
       el('div', 'seg',
         btn('編輯', () => editNotice(n.id)),
         btn(n.pinned ? '取消置頂' : '置頂', () => togglePinNotice(n)),
-        btn('刪除', () => deleteNotice(n), '#e5484d')));
-    if (n.id === editingNotice) card.style.borderColor = '#06C755';
+        btn('刪除', () => deleteNotice(n), 'no')));
+    if (n.id === editingNotice) card.classList.add('editing');
     return card;
   }));
 }
@@ -1493,9 +1490,8 @@ async function deleteNotice(n) {
 function showOpenInLine() {
   if (liff.isInClient()) return;
   const e = new URLSearchParams(location.search).get('e');
-  const a = el('a', '', '在 LINE 中開啟');
+  const a = el('a', 'lineBtn', '在 LINE 中開啟');
   a.href = `https://line.me/R/app/${LIFF_ID}${e ? `?e=${encodeURIComponent(e)}` : ''}`;
-  a.style.cssText = 'display:block;text-align:center;margin-top:8px;padding:10px;border-radius:8px;background:#06C755;color:#fff;text-decoration:none';
   const box = el('div', 'note', '⚠️ 目前不是在 LINE 裡開啟，報名後無法自動發送名單到群組。請在 LINE 群組點連結開啟，或按下方按鈕。', a);
   box.style.margin = '12px 0 0';
   $('tabs').after(box);

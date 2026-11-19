@@ -3,139 +3,217 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#07122b">
     <title>進擊的匹克團 接龍</title>
-    <link rel="icon" type="image/png" href="assets/logo.png">
-    <link rel="apple-touch-icon" href="assets/logo.png">
+    <link rel="icon" type="image/png" href="assets/icon-192.png">
+    <link rel="apple-touch-icon" href="assets/icon-192.png">
     <style>
+        /* ===== 主題色（取自 logo 與背景：深夜藍 × 金色光芒） ===== */
+        :root {
+            color-scheme: dark;
+            --bg: #07122b;
+            --panel: rgba(9, 20, 48, .80);
+            --panel-2: rgba(255, 255, 255, .05);
+            --line: rgba(255, 255, 255, .14);
+            --line-gold: rgba(255, 196, 84, .35);
+            --text: #eef2ff;
+            --muted: #aab6d3;
+            --faint: #7d8bad;
+            --gold: #ffc83d;
+            --gold-2: #ff9a1f;
+            --gold-soft: rgba(255, 190, 70, .13);
+            --grad: linear-gradient(135deg, #ffe07a 0%, #ffb22e 55%, #ff8a1a 100%);
+            --ok: #5ee38f;
+            --wait: #ffb547;
+            --danger: #ff7a7a;
+            --line-green: #06C755;
+            --radius: 14px;
+        }
+
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
-        body { font-family: system-ui, sans-serif; color: #222; background: #fff; margin: 0; }
-        .wrap { max-width: 420px; margin: 0 auto; padding: 0 16px 32px; }
-        .logo { display: flex; justify-content: center; padding: 16px 0 4px; }
-        .logo img { width: 200px; max-width: 60%; height: auto; display: block; }
-        h1 { font-size: 22px; margin: 8px 0; }
-        label { display: block; margin: 12px 0 4px; font-size: 14px; color: #555; }
-        label.sub { font-size: 12px; color: #999; }
-        .note { white-space: pre-wrap; background: #fffbe6; padding: 10px; border-radius: 8px; margin-top: 10px; font-size: 14px; }
-        input, select, textarea { font-family: inherit; width: 100%; padding: 10px; font-size: 16px;
-                                  border: 1px solid #ccc; border-radius: 8px; background: #fff; }
-        button { display: block; width: 100%; padding: 14px; margin: 12px 0; font-size: 16px; font-family: inherit;
-                 border: 0; border-radius: 8px; background: #06C755; color: #fff; cursor: pointer; }
-        button.secondary { background: #fff; color: #06C755; border: 1px solid #06C755; }
-        button.danger { background: #fff; color: #e5484d; border: 1px solid #e5484d; }
-        button:disabled { opacity: .5; }
-        .muted { color: #666; font-size: 14px; }
-        .small { font-size: 12px; color: #999; }
-        .ok { color: #1DB446; }
-        .wait { color: #FF8C00; }
+        html { background: var(--bg); }
+        body { font-family: system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+               color: var(--text); background: var(--bg); margin: 0; min-height: 100vh;
+               -webkit-font-smoothing: antialiased; }
+        /* 背景圖固定不動（iOS 不支援 background-attachment: fixed，改用固定定位的偽元素） */
+        body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; }
+        body::before { background: var(--bg) url("assets/bg.jpg") center top / cover no-repeat; }
+        body::after { z-index: -1;
+                      background: linear-gradient(180deg, rgba(5, 12, 32, .05) 0%, rgba(5, 12, 32, .35) 30%,
+                                                          rgba(5, 12, 32, .72) 55%, rgba(5, 12, 32, .82) 100%); }
 
-        /* 分頁 */
-        nav { position: sticky; top: 0; z-index: 5; background: #fff; display: flex; gap: 8px;
-              padding: 12px 0 10px; border-bottom: 1px solid #eee; overflow-x: auto; }
-        nav button { flex: 1 0 auto; width: auto; margin: 0; padding: 10px 12px; font-size: 14px;
-                     background: #fff; color: #333; border: 1px solid #ccc; }
-        nav button.on { background: #06C755; color: #fff; border-color: #06C755; }
+        .wrap { max-width: 440px; margin: 0 auto; padding: 0 14px 40px; }
 
-        /* 日期快選 */
+        /* ===== 頁首：logo 疊在鹿的光芒下方 ===== */
+        .logo { display: flex; justify-content: center; align-items: flex-end;
+                height: clamp(190px, 34vh, 300px); padding-bottom: 14px; }
+        .logo img { width: 148px; height: 148px; border-radius: 50%; object-fit: cover; display: block;
+                    box-shadow: 0 0 0 2px rgba(255, 200, 80, .7), 0 0 28px rgba(255, 170, 40, .55), 0 10px 30px rgba(0, 0, 0, .5); }
+
+        h1 { font-size: 22px; margin: 8px 0; letter-spacing: .02em; }
+        a { color: var(--gold); }
+        label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+        label.sub { font-size: 12px; color: var(--faint); }
+        .muted { color: var(--muted); font-size: 14px; }
+        .small { font-size: 12px; color: var(--faint); }
+        .ok { color: var(--ok); }
+        .wait { color: var(--wait); }
+        .note { white-space: pre-wrap; background: var(--gold-soft); border: 1px solid var(--line-gold);
+                padding: 10px 12px; border-radius: 10px; margin-top: 10px; font-size: 14px; line-height: 1.6; }
+
+        /* ===== 表單 ===== */
+        input, select, textarea { font-family: inherit; width: 100%; padding: 11px 12px; font-size: 16px; color: var(--text);
+                                  border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .06);
+                                  transition: border-color .15s, box-shadow .15s; }
+        input::placeholder, textarea::placeholder { color: var(--faint); }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold);
+                                                   box-shadow: 0 0 0 3px rgba(255, 200, 61, .2); }
+        select option { background: #0d1c40; }
+
+        /* ===== 按鈕 ===== */
+        button { display: block; width: 100%; padding: 14px; margin: 12px 0; font-size: 16px; font-weight: 700; font-family: inherit;
+                 letter-spacing: .03em; border: 0; border-radius: 12px; background: var(--grad); color: #2a1600; cursor: pointer;
+                 box-shadow: 0 4px 18px rgba(255, 150, 30, .3), inset 0 1px 0 rgba(255, 255, 255, .45);
+                 transition: transform .08s, filter .15s; -webkit-tap-highlight-color: transparent; }
+        button:active { transform: scale(.98); filter: brightness(.95); }
+        button.secondary { background: transparent; color: var(--gold); border: 1px solid var(--line-gold); box-shadow: none; font-weight: 600; }
+        button.danger { background: transparent; color: var(--danger); border: 1px solid rgba(255, 122, 122, .55); box-shadow: none; font-weight: 600; }
+        button:disabled { opacity: .45; }
+        .lineBtn { display: block; text-align: center; margin-top: 8px; padding: 11px; border-radius: 10px;
+                   background: var(--line-green); color: #fff; text-decoration: none; font-weight: 700; }
+
+        /* 小型膠囊按鈕的共用樣式（分頁、日期、選項） */
+        nav button, .chips button, .seg button, .srow .del {
+            width: auto; margin: 0; font-weight: 500; letter-spacing: 0; box-shadow: none;
+            background: rgba(255, 255, 255, .06); color: var(--text); border: 1px solid var(--line); }
+        nav button.on, .chips button.on, .seg button.on {
+            background: var(--grad); color: #2a1600; border-color: transparent; font-weight: 700;
+            box-shadow: 0 2px 12px rgba(255, 160, 40, .35); }
+
+        /* ===== 分頁列 ===== */
+        nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; padding: 8px;
+              margin: 0 -4px; border-radius: 0 0 16px 16px; overflow-x: auto;
+              background: rgba(6, 14, 36, .82); border: 1px solid var(--line); border-top: 0;
+              -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+        nav button { flex: 1 0 auto; padding: 10px 12px; font-size: 14px; border-radius: 10px; }
+
+        /* ===== 內容面板（每個分頁一張玻璃卡） ===== */
+        #chainView, #createView, #infoView, #reviewView, #noticeBoard {
+            margin-top: 12px; padding: 6px 16px 18px; border-radius: 18px;
+            background: var(--panel); border: 1px solid var(--line);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+            -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+
+        /* ===== 公告欄 ===== */
+        #noticeBoard { padding: 12px 16px; border-color: var(--line-gold);
+                       background: linear-gradient(180deg, rgba(255, 180, 50, .14), rgba(9, 20, 48, .82) 70%); }
+        #noticeBoard .nbHead { display: flex; justify-content: space-between; align-items: baseline;
+                               font-weight: 700; font-size: 15px; color: var(--gold); }
+        .notice { padding: 10px 0; font-size: 14px; line-height: 1.6; }
+        .notice + .notice { border-top: 1px dashed var(--line-gold); }
+        .notice .txt { white-space: pre-wrap; word-break: break-word; }
+        .notice .meta { font-size: 12px; color: var(--faint); margin-top: 4px; }
+        .notice .newTag { font-size: 11px; font-weight: 700; color: #fff; background: #e5484d; border-radius: 4px;
+                          padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
+        #noticeMoreBtn { width: auto; margin: 4px 0 0; padding: 4px 0; font-size: 13px; font-weight: 600;
+                         background: none; color: var(--gold); border: 0; box-shadow: none; }
+        #noticeAdminRows .card .seg { margin-top: 8px; }
+        .card.editing { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(255, 200, 61, .25); }
+        .check { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+        .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--gold-2); }
+
+        /* ===== 日期快選 ===== */
         .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
-        .chips button { flex: 0 0 auto; width: auto; margin: 0; padding: 10px 14px; font-size: 15px;
-                        background: #fff; color: #333; border: 1px solid #ccc; }
-        .chips button.on { background: #06C755; color: #fff; border-color: #06C755; }
+        .chips button { flex: 0 0 auto; padding: 10px 14px; font-size: 15px; border-radius: 999px; }
 
-        /* 報名頁 */
-        .kicker { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #1DB446; font-weight: bold; }
-        .kicker img { width: 22px; height: 22px; object-fit: contain; }
+        /* ===== 報名頁 ===== */
+        .kicker { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gold); font-weight: 700; letter-spacing: .05em; }
+        .kicker img, .ico { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px var(--line-gold); }
+        .ico { width: 34px; height: 34px; }
         .courts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-        .courts button { margin: 0; text-align: left; padding: 10px 12px; background: #fff; color: #222;
-                         border: 1px solid #ccc; display: flex; flex-direction: column; gap: 3px; }
-        .courts button.on { border: 2px solid #06C755; background: #f3f8f4; }
-        .courts .t { font-size: 15px; font-weight: bold; }
-        .courts .lv { font-size: 12px; color: #666; }
-        .courts .left { font-size: 13px; font-weight: bold; }
-        #myState { background: #f3f8f4; padding: 10px; border-radius: 8px; margin-top: 16px; font-size: 15px; white-space: pre-line; }
-        .listHead { display: flex; justify-content: space-between; align-items: baseline; margin-top: 20px;
-                    padding-bottom: 6px; border-bottom: 1px solid #eee; }
-        .listHead b { font-size: 16px; }
-        .sec { font-weight: bold; margin-top: 16px; }
+        .courts button { margin: 0; text-align: left; padding: 12px; font-weight: 400; letter-spacing: 0; box-shadow: none;
+                         background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+                         display: flex; flex-direction: column; gap: 4px; }
+        .courts button.on { border: 1px solid var(--gold); background: var(--gold-soft); box-shadow: 0 0 0 2px rgba(255, 200, 61, .2); }
+        .courts .t { font-size: 15px; font-weight: 700; }
+        .courts .lv { font-size: 12px; color: var(--muted); }
+        .courts .left { font-size: 13px; font-weight: 700; }
+        #myState { background: var(--panel-2); border: 1px solid var(--line); padding: 10px 12px; border-radius: 10px;
+                   margin-top: 16px; font-size: 15px; white-space: pre-line; }
+        #myState:empty { display: none; }
+        .listHead { display: flex; justify-content: space-between; align-items: baseline; margin-top: 22px;
+                    padding-bottom: 8px; border-bottom: 1px solid var(--line-gold); }
+        .listHead b { font-size: 16px; color: var(--gold); }
+        .sec { font-weight: 700; margin-top: 16px; }
         .rows { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
-        .row { display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 3px 0; }
-        .row .n { width: 18px; text-align: right; color: #999; font-weight: normal; flex: none; }
-        .row.me { font-weight: bold; }
-        .row.off .name { text-decoration: line-through; color: #999; }
-        .badge { font-size: 12px; padding: 1px 6px; border-radius: 4px; border: 1px solid #06C755; color: #06C755; background: #fff; font-weight: normal; }
-        .badge.q { background: #06C755; color: #fff; }
+        .row { display: flex; align-items: center; gap: 8px; font-size: 15px; padding: 4px 0; }
+        .row .n { width: 20px; text-align: right; color: var(--faint); font-weight: normal; flex: none; }
+        .row.me { font-weight: 700; color: var(--gold); }
+        .row.off .name { text-decoration: line-through; color: var(--faint); }
+        .badge { font-size: 12px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line-gold); color: var(--gold); font-weight: normal; }
+        .badge.q { background: var(--grad); color: #2a1600; border-color: transparent; font-weight: 700; }
         .srow { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
         .srow .who { flex: 1; min-width: 0; font-size: 15px; }
         .srow input { padding: 8px; font-size: 15px; }
         .srow input.dupr { width: 64px; flex: none; text-align: center; padding: 8px 4px; }
-        .seg { display: flex; gap: 4px; flex: none; }
-        .seg button, .srow .del { width: auto; margin: 0; padding: 8px 10px; font-size: 14px;
-                                  background: #fff; color: #333; border: 1px solid #ccc; }
-        .seg button.on { background: #06C755; color: #fff; border-color: #06C755; }
-        .seg button:disabled { opacity: 1; background: #f3f8f4; color: #1DB446; border-color: #cfe9d6; }
-        .srow .del { color: #e5484d; border-color: #e5484d; }
+        .seg { display: flex; gap: 4px; flex: none; flex-wrap: wrap; }
+        .seg button, .srow .del { padding: 8px 11px; font-size: 14px; border-radius: 9px; }
+        .seg button:disabled { opacity: 1; background: var(--gold-soft); color: var(--gold); border-color: var(--line-gold); }
+        .srow .del, .seg button.no { color: var(--danger); border-color: rgba(255, 122, 122, .55); }
         #addFriendBtn { padding: 10px; margin: 10px 0; font-size: 15px; }
         .payTag { font-size: 12px; padding: 1px 6px; border-radius: 4px; font-weight: normal; flex: none; }
-        .payTag.cash { color: #666; border: 1px solid #ccc; }
-        .payTag.lp { color: #06C755; border: 1px solid #06C755; }
-        .payTag.rep { color: #FF8C00; border: 1px solid #FF8C00; }
-        .payTag.paid { color: #fff; background: #06C755; border: 1px solid #06C755; }
-        .leaveTag { font-size: 12px; color: #FF8C00; font-weight: normal; }
-        .row .removeBtn { width: auto; margin: 0 0 0 auto; padding: 4px 10px; font-size: 13px; flex: none;
-                           background: #fff; color: #e5484d; border: 1px solid #e5484d; }
-        .checkin { width: 24px; height: 24px; margin: 0 0 0 auto; padding: 0; flex: none;
-                   border: 1px solid #ccc; border-radius: 6px; background: #fff; color: #06C755;
-                   font-size: 14px; line-height: 22px; }
-        .checkin.on { background: #06C755; border-color: #06C755; color: #fff; }
+        .payTag.cash { color: var(--muted); border: 1px solid var(--line); }
+        .payTag.lp { color: var(--ok); border: 1px solid rgba(94, 227, 143, .5); }
+        .payTag.rep { color: var(--wait); border: 1px solid rgba(255, 181, 71, .6); }
+        .payTag.paid { color: #04210f; background: var(--ok); border: 1px solid var(--ok); }
+        .leaveTag { font-size: 12px; color: var(--wait); font-weight: normal; }
+        .row .removeBtn { width: auto; margin: 0 0 0 auto; padding: 4px 10px; font-size: 13px; font-weight: 500; flex: none; box-shadow: none;
+                          background: transparent; color: var(--danger); border: 1px solid rgba(255, 122, 122, .55); border-radius: 8px; }
+        .checkin { width: 26px; height: 26px; margin: 0 0 0 auto; padding: 0; flex: none; box-shadow: none;
+                   border: 1px solid var(--line); border-radius: 7px; background: rgba(255, 255, 255, .06); color: var(--gold);
+                   font-size: 14px; line-height: 24px; }
+        .checkin.on { background: var(--grad); border-color: transparent; color: #2a1600; }
 
-        /* 表格 / 卡片 */
-        .table { border: 1px solid #ccc; border-radius: 8px; overflow: hidden; font-size: 14px; }
-        .table > div { display: grid; gap: 4px; padding: 8px 10px; align-items: center; }
-        .table > div + div { border-top: 1px solid #eee; }
-        .table > div:first-child { background: #f3f8f4; color: #555; }
+        /* ===== 表格 / 卡片 ===== */
+        .table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+        .table > div { display: grid; gap: 4px; padding: 9px 12px; align-items: center; }
+        .table > div + div { border-top: 1px solid var(--line); }
+        .table > div:first-child { background: var(--gold-soft); color: var(--gold); font-weight: 600; }
         .table .c { text-align: center; }
         .t4 > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         #seatTable > div { grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr)); }
         #monthGrids .sec { font-size: 14px; margin-top: 10px; }
         #courtLevels .sec { font-size: 14px; margin-top: 4px; }
         .t4w > div { grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); }
-        .card { border: 1px solid #ccc; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
-        .card .h { font-weight: bold; font-size: 15px; }
-        .card .d { color: #666; margin-top: 4px; }
+        .card { border: 1px solid var(--line); background: var(--panel-2); border-radius: 12px; padding: 12px; font-size: 14px; }
+        .card .h { font-weight: 700; font-size: 15px; }
+        .card .d { color: var(--muted); margin-top: 4px; }
         .plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-        .plans > div { border: 1px solid #ccc; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
-        .plans > div.hi { border-color: #06C755; background: #f3f8f4; }
-        .plans .p { font-size: 20px; font-weight: bold; }
+        .plans > div { border: 1px solid var(--line); background: var(--panel-2); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+        .plans > div.hi { border-color: var(--gold); background: var(--gold-soft); box-shadow: 0 0 18px rgba(255, 170, 40, .2); }
+        .plans > div.hi .ok { color: var(--gold); }
+        .plans .p { font-size: 22px; font-weight: 800; }
+        .plans > div.hi .p { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
         .months { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-        .months > div { border: 1px solid #eee; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+        .months > div { border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding: 8px;
+                        display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+        .months > div.sum { background: var(--gold-soft); border-color: var(--line-gold); }
         .months b { font-size: 15px; }
         .kv { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; font-size: 14px; }
         .kv > div { display: flex; gap: 8px; }
-        .kv span:first-child { color: #aaa; width: 48px; flex: none; }
-        .kv span:last-child { color: #666; }
-        .h2 { font-weight: bold; margin-top: 20px; }
-        #myId { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; color: #666; }
+        .kv span:first-child { color: var(--faint); width: 48px; flex: none; }
+        .kv span:last-child { color: var(--text); }
+        .h2 { font-weight: 700; margin-top: 24px; padding-left: 10px; border-left: 3px solid var(--gold); line-height: 1.3; }
+        #myId { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
 
-        /* 公告欄 */
-        #noticeBoard { margin-top: 12px; border: 1px solid #ffe08a; background: #fffbe6; border-radius: 8px; padding: 10px 12px; }
-        #noticeBoard .nbHead { display: flex; justify-content: space-between; align-items: baseline; font-weight: bold; font-size: 15px; }
-        .notice { padding: 8px 0; font-size: 14px; }
-        .notice + .notice { border-top: 1px dashed #f0d77a; }
-        .notice .txt { white-space: pre-wrap; word-break: break-word; }
-        .notice .txt a { color: #06C755; }
-        .notice .meta { font-size: 12px; color: #999; margin-top: 4px; }
-        .notice .newTag { font-size: 11px; color: #fff; background: #e5484d; border-radius: 4px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }
-        #noticeMoreBtn { width: auto; margin: 4px 0 0; padding: 4px 0; font-size: 13px; background: none; color: #06C755; border: 0; }
-        #noticeAdminRows .card .seg { margin-top: 8px; }
-        .check { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 14px; color: #555; }
-        .check input { width: auto; margin: 0; }
-
-        #status { color: #666; text-align: center; min-height: 1.2em; font-size: 15px; }
-    </style>
+        #status { color: var(--muted); text-align: center; min-height: 1.2em; font-size: 15px; margin-top: 16px;
+                  text-shadow: 0 1px 6px rgba(0, 0, 0, .6); }
+</style>
 </head>
 <body>
 <div class="wrap">
-    <header class="logo"><img src="assets/logo.png" alt="進擊的匹克團" onerror="this.parentNode.hidden=true"></header>
+    <header class="logo"><img src="assets/logo-sm.jpg" alt="進擊的匹克團" onerror="this.parentNode.hidden=true"></header>
     <nav id="tabs" hidden>
         <button data-view="chainView" hidden>報名頁</button>
         <button data-view="createView">開團</button>
@@ -152,7 +230,7 @@
 
     <!-- 報名頁：有 ?e=<接龍ID> 時顯示 -->
     <section id="chainView" hidden>
-        <div class="kicker" style="margin-top:12px"><img src="assets/logo.png" alt="" onerror="this.hidden=true"><span id="cKicker">進擊的匹克團</span></div>
+        <div class="kicker" style="margin-top:12px"><img src="assets/logo-sm.jpg" alt="" onerror="this.hidden=true"><span id="cKicker">進擊的匹克團</span></div>
         <h1 id="cTitle"></h1>
         <div id="cInfo" class="muted"></div>
         <div id="cNote" class="note" hidden></div>
@@ -186,16 +264,16 @@
                 <img id="payQr" src="assets/linepay-qr.png" alt="LINE Pay 收款碼" style="display:block;width:220px;max-width:100%;margin:10px auto;border-radius:8px"
                      onerror="this.hidden=true;document.getElementById('payNoQr').hidden=false">
                 <div id="payNoQr" hidden>請向團主索取 LINE Pay 收款碼。</div>
-                <div class="small" style="color:#666">在這支手機付款：長按收款碼存到相簿 → 打開 LINE「掃描行動條碼」→ 點右下角相簿選這張圖 → 付款。</div>
+                <div class="small" style="color:var(--muted)">在這支手機付款：長按收款碼存到相簿 → 打開 LINE「掃描行動條碼」→ 點右下角相簿選這張圖 → 付款。</div>
                 <button id="payDoneBtn">我已用 LINE Pay 付款</button>
             </div>
         </div>
 
         <div class="listHead"><b id="listTitle"></b><span id="listTotal" class="muted"></span></div>
-        <div id="memberHead" class="sec" style="margin-top:12px;color:#555"></div>
+        <div id="memberHead" class="sec" style="margin-top:12px;color:var(--muted)"></div>
         <div id="memberRows" class="rows"></div>
         <div id="confirmedHead" class="sec ok"></div>
-        <div id="emptyHint" class="muted" style="color:#aaa;margin:6px 0" hidden>還沒有人報名，快來搶頭香！</div>
+        <div id="emptyHint" class="muted" style="color:var(--faint);margin:6px 0" hidden>還沒有人報名，快來搶頭香！</div>
         <div id="confirmedRows" class="rows"></div>
         <div id="waitHead" class="sec wait" hidden></div>
         <div id="waitRows" class="rows"></div>
@@ -205,7 +283,7 @@
 
     <!-- 開團表單 -->
     <section id="createView" hidden>
-        <h1 style="display:flex;align-items:center;gap:8px;margin-top:20px"><img src="assets/logo.png" alt="" style="width:32px;height:32px;object-fit:contain" onerror="this.hidden=true"><span>發起匹克球接龍</span></h1>
+        <h1 style="display:flex;align-items:center;gap:8px;margin-top:20px"><img src="assets/logo-sm.jpg" alt="" class="ico" onerror="this.hidden=true"><span>發起匹克球接龍</span></h1>
         <form id="createForm">
             <label for="fTitle">活動名稱</label>
             <input id="fTitle" required maxlength="40" value="週日分級包場">
@@ -261,7 +339,7 @@
         <div class="h2">每月場次（月繳金額）</div>
         <div id="monthGrids"></div>
 
-        <div class="note" style="font-size:13px;color:#666;margin-top:16px">📌 季繳按 12 場計，涵蓋指定團別（週五或週日），不等於任意連續三個月份；週五與週日的會員名額、收支各自獨立。請假、補位及退費辦法將另行公告。</div>
+        <div class="note" style="font-size:13px;color:var(--muted);margin-top:16px">📌 季繳按 12 場計，涵蓋指定團別（週五或週日），不等於任意連續三個月份；週五與週日的會員名額、收支各自獨立。請假、補位及退費辦法將另行公告。</div>
         <div id="sheetSource" class="small" style="margin-top:8px" hidden></div>
         <button id="copyAnnounceBtn" class="secondary" style="margin-top:16px">複製 LINE 招募公告</button>
 
@@ -302,12 +380,12 @@
 
         <div class="h2" style="margin-top:28px">待審核申請</div>
         <div class="muted" style="font-size:14px">核准後會寫進會員名單、自動保留名額。</div>
-        <div id="reviewEmptyHint" class="muted" style="color:#aaa;margin:16px 0" hidden>目前沒有待審核的申請。</div>
+        <div id="reviewEmptyHint" class="muted" style="color:var(--faint);margin:16px 0" hidden>目前沒有待審核的申請。</div>
         <div id="reviewRows" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"></div>
 
         <div class="h2" style="margin-top:28px">會員名單</div>
         <div class="muted" style="font-size:14px">移除後，之後的團不再保留這位會員的名額（已開的團也會立刻釋出給單次接龍）。</div>
-        <div id="rosterEmptyHint" class="muted" style="color:#aaa;margin:16px 0" hidden>目前沒有會員。</div>
+        <div id="rosterEmptyHint" class="muted" style="color:var(--faint);margin:16px 0" hidden>目前沒有會員。</div>
         <div id="rosterRows"></div>
     </section>
 
@@ -334,6 +412,6 @@
 </script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=23"></script>
+<script type="module" src="index.js?v=24"></script>
 </body>
 </html>
