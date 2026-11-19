@@ -362,10 +362,13 @@
         <button id="cancelApplyBtn" class="danger" hidden>取消申請</button>
         <button id="quitMemberBtn" class="danger" hidden>退出會員</button>
 
-        <div class="h2" style="margin-top:24px">會員綁定（進階）</div>
-        <div class="muted" style="font-size:13px;margin-top:4px">團主也可以直接把下面的 ID 貼到 Firebase 手動加入會員名單。</div>
-        <div id="myId" style="margin-top:6px"></div>
-        <button id="copyIdBtn" class="secondary">複製我的 ID</button>
+        <!-- 會員綁定（進階）：暫時隱藏；要再顯示，把下面這個 div 的 hidden 拿掉 -->
+        <div id="memberBindBox" hidden>
+            <div class="h2" style="margin-top:24px">會員綁定（進階）</div>
+            <div class="muted" style="font-size:13px;margin-top:4px">團主也可以直接把下面的 ID 貼到 Firebase 手動加入會員名單。</div>
+            <div id="myId" style="margin-top:6px"></div>
+            <button id="copyIdBtn" class="secondary">複製我的 ID</button>
+        </div>
     </section>
 
     <!-- 團主管理：發布公告、審核會員申請、移除會員 -->
