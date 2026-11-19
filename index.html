@@ -116,6 +116,20 @@
         .h2 { font-weight: bold; margin-top: 20px; }
         #myId { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; color: #666; }
 
+        /* 公告欄 */
+        #noticeBoard { margin-top: 12px; border: 1px solid #ffe08a; background: #fffbe6; border-radius: 8px; padding: 10px 12px; }
+        #noticeBoard .nbHead { display: flex; justify-content: space-between; align-items: baseline; font-weight: bold; font-size: 15px; }
+        .notice { padding: 8px 0; font-size: 14px; }
+        .notice + .notice { border-top: 1px dashed #f0d77a; }
+        .notice .txt { white-space: pre-wrap; word-break: break-word; }
+        .notice .txt a { color: #06C755; }
+        .notice .meta { font-size: 12px; color: #999; margin-top: 4px; }
+        .notice .newTag { font-size: 11px; color: #fff; background: #e5484d; border-radius: 4px; padding: 0 5px; margin-right: 4px; vertical-align: 1px; }
+        #noticeMoreBtn { width: auto; margin: 4px 0 0; padding: 4px 0; font-size: 13px; background: none; color: #06C755; border: 0; }
+        #noticeAdminRows .card .seg { margin-top: 8px; }
+        .check { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 14px; color: #555; }
+        .check input { width: auto; margin: 0; }
+
         #status { color: #666; text-align: center; min-height: 1.2em; font-size: 15px; }
     </style>
 </head>
@@ -126,8 +140,15 @@
         <button data-view="chainView" hidden>報名頁</button>
         <button data-view="createView">開團</button>
         <button data-view="infoView">團資訊</button>
-        <button data-view="reviewView">會員管理</button>
+        <button data-view="reviewView">團主管理</button>
     </nav>
+
+    <!-- 公告欄：每個分頁都看得到，團主在「團主管理」發布後即時更新 -->
+    <section id="noticeBoard" hidden>
+        <div class="nbHead"><span>📢 公告欄</span><span id="noticeCount" class="small"></span></div>
+        <div id="noticeRows"></div>
+        <button id="noticeMoreBtn" type="button" hidden></button>
+    </section>
 
     <!-- 報名頁：有 ?e=<接龍ID> 時顯示 -->
     <section id="chainView" hidden>
@@ -265,10 +286,21 @@
         <button id="copyIdBtn" class="secondary">複製我的 ID</button>
     </section>
 
-    <!-- 會員管理：團主用，審核會員申請、移除會員 -->
+    <!-- 團主管理：發布公告、審核會員申請、移除會員 -->
     <section id="reviewView" hidden>
-        <h1 style="margin-top:20px">會員管理</h1>
-        <div class="h2" style="margin-top:8px">待審核申請</div>
+        <h1 style="margin-top:20px">團主管理</h1>
+        <div class="h2" style="margin-top:8px">公告欄</div>
+        <div class="muted" style="font-size:14px">發布後所有人打開網站都會立刻看到；置頂的公告會一直排在最上面。</div>
+        <label for="noticeText" id="noticeFormLabel">新公告</label>
+        <textarea id="noticeText" rows="4" maxlength="500" placeholder="例如：本週日下雨照常打，室內場地不受影響"></textarea>
+        <div id="noticeLen" class="small" style="text-align:right"></div>
+        <label class="check"><input id="noticePinned" type="checkbox">置頂</label>
+        <label class="check" id="noticeSendRow"><input id="noticeSend" type="checkbox" checked>同時發送到 LINE 聊天室</label>
+        <button id="noticeSaveBtn" type="button">發布公告</button>
+        <button id="noticeCancelEditBtn" class="secondary" type="button" hidden>取消編輯</button>
+        <div id="noticeAdminRows" style="display:flex;flex-direction:column;gap:10px;margin-top:8px"></div>
+
+        <div class="h2" style="margin-top:28px">待審核申請</div>
         <div class="muted" style="font-size:14px">核准後會寫進會員名單、自動保留名額。</div>
         <div id="reviewEmptyHint" class="muted" style="color:#aaa;margin:16px 0" hidden>目前沒有待審核的申請。</div>
         <div id="reviewRows" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"></div>
@@ -302,6 +334,6 @@
 </script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=22"></script>
+<script type="module" src="index.js?v=23"></script>
 </body>
 </html>

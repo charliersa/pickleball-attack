@@ -25,6 +25,24 @@
           "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
           "$other": { ".validate": false }
         }
+      },
+      "notices": {
+        ".read": true,
+        "$id": {
+          ".write": true,
+          ".validate": "newData.hasChildren(['text', 'ts', 'author'])",
+          "text": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 500" },
+          "pinned": { ".validate": "newData.isBoolean()" },
+          "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
+          "editedAt": { ".validate": "newData.val() == now || newData.val() == data.val()" },
+          "author": {
+            ".validate": "newData.hasChildren(['id', 'name'])",
+            "id": { ".validate": "newData.isString() && newData.val().length <= 64" },
+            "name": { ".validate": "newData.isString() && newData.val().length <= 50" },
+            "$other": { ".validate": false }
+          },
+          "$other": { ".validate": false }
+        }
       }
     },
     "chains": {

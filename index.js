@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=22';
+import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=23';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -41,6 +41,11 @@ let selCourt = null;  // 報名頁目前查看的場地
 let unsubChain = null;
 let form = null;      // 報名表內容（自己與朋友各選哪面場）
 let formKey = null;   // 上次從資料庫同步表單時，我的報名內容
+let notices = {};     // 公告欄 pkclub/notices/{id}: { text, pinned, ts, editedAt, author: { id, name } }
+let editingNotice = null; // 團主管理正在編輯的公告 ID（null = 發布新公告）
+let noticeExpanded = false;
+const NOTICE_MAX = 500;
+const NOTICE_PREVIEW = 3; // 公告欄預設顯示幾則，其餘按「顯示全部」展開
 
 // LIFF 的錯誤有時 message 是空的，改顯示錯誤代碼
 function errText(err) {
@@ -1294,6 +1299,196 @@ async function rejectApplication(appKey, a) {
   }
 }
 
+// ---------- 公告欄 ----------
+// 上次打開網站時看過的最新公告時間；比它新（或之後才編輯）的公告標「新」
+const noticeSeenAt = (() => {
+  try { return Number(localStorage.getItem('noticeSeen')) || 0; } catch { return 0; }
+})();
+
+function markNoticesSeen() {
+  const latest = Math.max(0, ...Object.values(notices).map((n) => n.editedAt || n.ts || 0));
+  try { if (latest) localStorage.setItem('noticeSeen', String(latest)); } catch { /* 忽略 */ }
+}
+
+function cleanNotices(val) {
+  const out = {};
+  for (const [id, n] of Object.entries(val || {})) {
+    if (n && typeof n.text === 'string' && n.text.trim()) out[id] = n;
+  }
+  return out;
+}
+
+// 置頂在前，其餘新的在前
+function sortedNotices() {
+  return Object.entries(notices).map(([id, n]) => ({ id, ...n }))
+    .sort((a, b) => (!!b.pinned - !!a.pinned) || (b.ts || 0) - (a.ts || 0));
+}
+
+function formatTs(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return `${formatDate(toISO(d))} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// 公告內文：網址變成可點的連結，其餘一律當純文字
+function noticeText(text) {
+  const box = el('div', 'txt');
+  let last = 0;
+  for (const m of text.matchAll(/https?:\/\/[^\s<>"'）]+/g)) {
+    box.append(text.slice(last, m.index));
+    const a = el('a', '', m[0]);
+    a.href = m[0];
+    a.target = '_blank';
+    a.rel = 'noopener';
+    box.append(a);
+    last = m.index + m[0].length;
+  }
+  box.append(text.slice(last));
+  return box;
+}
+
+function noticeMeta(n) {
+  const who = n.author?.name ? `${n.author.name}・` : '';
+  return `${who}${formatTs(n.ts)}${n.editedAt ? `（${formatTs(n.editedAt)} 編輯）` : ''}`;
+}
+
+function noticeCard(n) {
+  const isNew = (n.editedAt || n.ts || 0) > noticeSeenAt;
+  const txt = noticeText(n.text);
+  if (n.pinned) txt.prepend('📌 ');
+  if (isNew) txt.prepend(el('span', 'newTag', '新'));
+  return el('div', 'notice', txt, el('div', 'meta', noticeMeta(n)));
+}
+
+function renderNoticeBoard() {
+  const list = sortedNotices();
+  $('noticeBoard').hidden = list.length === 0;
+  const shown = noticeExpanded ? list : list.slice(0, NOTICE_PREVIEW);
+  $('noticeRows').replaceChildren(...shown.map(noticeCard));
+  $('noticeCount').textContent = list.length > 1 ? `共 ${list.length} 則` : '';
+  const more = list.length > NOTICE_PREVIEW;
+  $('noticeMoreBtn').hidden = !more;
+  $('noticeMoreBtn').textContent = noticeExpanded ? '收合' : `顯示全部 ${list.length} 則 ▾`;
+}
+
+// 團主管理：公告列表（編輯／置頂／刪除）
+function renderNoticeAdmin() {
+  $('noticeAdminRows').replaceChildren(...sortedNotices().map((n) => {
+    const btn = (text, onClick, color) => {
+      const b = segButton(text, false, onClick);
+      if (color) { b.style.color = color; b.style.borderColor = color; }
+      return b;
+    };
+    const card = el('div', 'card',
+      noticeText(`${n.pinned ? '📌 ' : ''}${n.text}`),
+      el('div', 'd', noticeMeta(n)),
+      el('div', 'seg',
+        btn('編輯', () => editNotice(n.id)),
+        btn(n.pinned ? '取消置頂' : '置頂', () => togglePinNotice(n)),
+        btn('刪除', () => deleteNotice(n), '#e5484d')));
+    if (n.id === editingNotice) card.style.borderColor = '#06C755';
+    return card;
+  }));
+}
+
+function renderNoticeForm() {
+  const editing = !!editingNotice;
+  $('noticeFormLabel').textContent = editing ? '編輯公告' : '新公告';
+  $('noticeSaveBtn').textContent = editing ? '儲存修改' : '發布公告';
+  $('noticeCancelEditBtn').hidden = !editing;
+  $('noticeLen').textContent = `${$('noticeText').value.length} / ${NOTICE_MAX}`;
+  // 只有在 LINE 裡開才能發到聊天室（聊天室內直接發、其他情況跳分享選單）
+  $('noticeSendRow').hidden = !liff.isInClient();
+}
+
+function editNotice(id) {
+  const n = notices[id];
+  if (!n) return;
+  editingNotice = id;
+  $('noticeText').value = n.text;
+  $('noticePinned').checked = !!n.pinned;
+  $('noticeSend').checked = false; // 修改錯字通常不用再發一次到群組
+  renderNoticeForm();
+  renderNoticeAdmin();
+  $('noticeText').focus();
+}
+
+function resetNoticeForm() {
+  editingNotice = null;
+  $('noticeText').value = '';
+  $('noticePinned').checked = false;
+  $('noticeSend').checked = true;
+  renderNoticeForm();
+  renderNoticeAdmin();
+}
+
+async function sendNoticeToChat(text) {
+  const msg = [{ type: 'text', text: `📢 進擊的匹克團公告\n\n${text}` }];
+  if (canSendToChat()) {
+    await liff.sendMessages(msg);
+    return 'sent';
+  }
+  if (!liff.isApiAvailable('shareTargetPicker')) return 'skipped';
+  return (await liff.shareTargetPicker(msg)) ? 'sent' : 'cancelled';
+}
+
+async function saveNotice() {
+  const text = $('noticeText').value.trim();
+  if (!text) { setStatus('請先輸入公告內容'); return; }
+  const pinned = $('noticePinned').checked;
+  const send = !$('noticeSendRow').hidden && $('noticeSend').checked;
+  const id = editingNotice;
+  if (id && !notices[id]) { setStatus('這則公告已被刪除，改為發布新公告'); editingNotice = null; return; }
+  $('noticeSaveBtn').disabled = true;
+  try {
+    if (id) {
+      await update(ref(db, `pkclub/notices/${id}`), { text, pinned, editedAt: serverTimestamp() });
+    } else {
+      await set(push(ref(db, 'pkclub/notices')), {
+        text, pinned, ts: serverTimestamp(),
+        author: { id: profile.userId, name: profile.displayName.slice(0, 50) },
+      });
+    }
+    const done = id ? '公告已更新' : '公告已發布';
+    resetNoticeForm();
+    if (!send) { setStatus(`${done} ✅`); return; }
+    try {
+      const r = await sendNoticeToChat(text);
+      setStatus(r === 'sent' ? `${done}，也已發送到聊天室 ✅` : `${done} ✅（未發送到聊天室）`);
+    } catch (err) {
+      console.error(err);
+      setStatus(`${done}，但發送到聊天室失敗：${errText(err)}`);
+    }
+  } catch (err) {
+    console.error(err);
+    setStatus(`公告儲存失敗：${errText(err)}`);
+  } finally {
+    $('noticeSaveBtn').disabled = false;
+  }
+}
+
+async function togglePinNotice(n) {
+  try {
+    await update(ref(db, `pkclub/notices/${n.id}`), { pinned: !n.pinned });
+    setStatus(n.pinned ? '已取消置頂' : '已置頂 📌');
+  } catch (err) {
+    console.error(err);
+    setStatus(`操作失敗：${errText(err)}`);
+  }
+}
+
+async function deleteNotice(n) {
+  if (!confirm(`確定要刪除這則公告嗎？\n\n${n.text.slice(0, 60)}${n.text.length > 60 ? '…' : ''}`)) return;
+  try {
+    await remove(ref(db, `pkclub/notices/${n.id}`));
+    if (editingNotice === n.id) resetNoticeForm();
+    setStatus('公告已刪除');
+  } catch (err) {
+    console.error(err);
+    setStatus(`刪除失敗：${errText(err)}`);
+  }
+}
+
 // 不是在 LINE App 裡開（例如被丟到 Chrome / Safari）就無法發到群組，提示改用 LINE 開啟
 function showOpenInLine() {
   if (liff.isInClient()) return;
@@ -1330,6 +1525,10 @@ function bindEvents() {
   $('applyBtn').addEventListener('click', applyMembership);
   $('cancelApplyBtn').addEventListener('click', cancelApplication);
   $('quitMemberBtn').addEventListener('click', quitMembership);
+  $('noticeSaveBtn').addEventListener('click', saveNotice);
+  $('noticeCancelEditBtn').addEventListener('click', resetNoticeForm);
+  $('noticeText').addEventListener('input', renderNoticeForm);
+  $('noticeMoreBtn').addEventListener('click', () => { noticeExpanded = !noticeExpanded; renderNoticeBoard(); });
 }
 
 async function main() {
@@ -1371,7 +1570,17 @@ async function main() {
   renderCreateCourts();
   renderInfo();
   renderMembership();
+  renderNoticeForm();
   $('tabs').hidden = false;
+
+  // 公告欄即時同步：團主一發布，所有開著網站的人畫面馬上更新
+  onValue(ref(db, 'pkclub/notices'), (snap) => {
+    notices = cleanNotices(snap.val());
+    if (editingNotice && !notices[editingNotice]) resetNoticeForm(); // 編輯中的公告被別人刪掉
+    renderNoticeBoard();
+    renderNoticeAdmin();
+    markNoticesSeen();
+  }, (err) => console.error('讀取公告失敗', err));
 
   // 會員名單即時同步（團主審核通過，或在 Firebase 後台改名單，頁面會自動更新）
   onValue(ref(db, 'pkclub/members'), (snap) => {
