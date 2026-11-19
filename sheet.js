@@ -11,6 +11,8 @@ export const DAYS = {
   fri: { label: '週五', short: '五', wd: 5 },
 };
 export const DAY_KEYS = ['fri', 'sun']; // 一週裡的先後順序
+// 場地固定是鹿角 4、5 號場；試算表寫到其他號碼會被忽略
+export const COURT_NOS = ['4', '5'];
 
 // 場地類型：行事曆「場地／程度」欄裡的關鍵字
 export const KINDS = {
@@ -66,7 +68,7 @@ export function parseCourts(str, day, names) {
     const [, no, kind, rawLevel] = m;
     const level = rawLevel.trim().replace(/^(\d)$/, '$1.0') || '—';
     return { no, kind, level, name: names?.[day]?.[kind] || KINDS[kind].name };
-  }).filter(Boolean).sort((a, b) => Number(a.no) - Number(b.no));
+  }).filter((c) => c && COURT_NOS.includes(c.no)).sort((a, b) => Number(a.no) - Number(b.no));
 }
 
 function dayOf(date, weekdayCell) {

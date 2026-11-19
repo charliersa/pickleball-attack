@@ -5,10 +5,10 @@
         ".read": true,
         "$key": {
           ".write": true,
-          ".validate": "newData.hasChildren(['name', 'plan', 'court']) && (($key.endsWith('_sun') && newData.child('day').val() == 'sun') || ($key.endsWith('_fri') && newData.child('day').val() == 'fri') || (!$key.contains('_') && !newData.hasChild('day')))",
+          ".validate": "newData.hasChildren(['name', 'plan', 'court', 'day']) && (($key.endsWith('_sun') && newData.child('day').val() == 'sun') || ($key.endsWith('_fri') && newData.child('day').val() == 'fri'))",
           "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "plan": { ".validate": "newData.val() == '季繳' || newData.val() == '月繳'" },
-          "court": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,2}$/)" },
+          "court": { ".validate": "newData.val() == '4' || newData.val() == '5'" },
           "day": { ".validate": "newData.val() == 'sun' || newData.val() == 'fri'" },
           "$other": { ".validate": false }
         }
@@ -17,10 +17,10 @@
         ".read": true,
         "$key": {
           ".write": true,
-          ".validate": "newData.hasChildren(['name', 'plan', 'court', 'ts']) && (($key.endsWith('_sun') && newData.child('day').val() == 'sun') || ($key.endsWith('_fri') && newData.child('day').val() == 'fri') || (!$key.contains('_') && !newData.hasChild('day')))",
+          ".validate": "newData.hasChildren(['name', 'plan', 'court', 'day', 'ts']) && (($key.endsWith('_sun') && newData.child('day').val() == 'sun') || ($key.endsWith('_fri') && newData.child('day').val() == 'fri'))",
           "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 50" },
           "plan": { ".validate": "newData.val() == '季繳' || newData.val() == '月繳'" },
-          "court": { ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,2}$/)" },
+          "court": { ".validate": "newData.val() == '4' || newData.val() == '5'" },
           "day": { ".validate": "newData.val() == 'sun' || newData.val() == 'fri'" },
           "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
           "$other": { ".validate": false }
@@ -62,7 +62,7 @@
         "day": { ".validate": "newData.val() == 'sun' || newData.val() == 'fri'" },
         "courts": {
           "$no": {
-            ".validate": "$no.matches(/^[0-9]{1,2}$/) && newData.hasChildren(['kind', 'name', 'level'])",
+            ".validate": "($no == '4' || $no == '5') && newData.hasChildren(['kind', 'name', 'level'])",
             "kind": { ".validate": "newData.val() == '挑戰' || newData.val() == '交流' || newData.val() == '初學'" },
             "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
             "level": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
@@ -93,7 +93,7 @@
             "pay": { ".validate": "newData.val() == 'cash' || newData.val() == 'linepay'" },
             "payReported": { ".validate": "newData.isBoolean()" },
             "paid": { ".validate": "newData.isBoolean()" },
-            "court": { ".validate": "newData.isString() && (root.child('chains/' + $chainId + '/courts/' + newData.val()).exists() || (!root.child('chains/' + $chainId + '/courts').exists() && (newData.val() == '6' || newData.val() == '7'))) && (!data.exists() || newData.val() == data.val())" },
+            "court": { ".validate": "(newData.val() == '4' || newData.val() == '5') && root.child('chains/' + $chainId + '/courts/' + newData.val()).exists() && (!data.exists() || newData.val() == data.val())" },
             "ts": { ".validate": "(!data.exists() && newData.val() == now) || newData.val() == data.val()" },
             "$other": { ".validate": false }
           }

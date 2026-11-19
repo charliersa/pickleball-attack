@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS } from './sheet.js?v=24';
+import { loadConfig, DAYS, DAY_KEYS, KINDS, COURT_NOS } from './sheet.js?v=25';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -17,14 +17,6 @@ const FLEX_MAX_ROWS = 40; // Flex 卡片最多列幾個名字，避免超過 LIN
 const DEFAULT_TIME = '19:00 - 21:00';
 const PLANS = ['季繳', '月繳'];
 const SEASON_SESSIONS = 12; // 季繳涵蓋指定團別 12 場
-
-// 改版前的接龍（沒有存 courts 欄位）：週日 6 號挑戰場、7 號交流場
-const LEGACY_COURTS = [
-  { no: '6', kind: '挑戰', name: '進擊挑戰場', level: '3.0+' },
-  { no: '7', kind: '交流', name: '進擊交流場', level: '2.5～2.99' },
-];
-// 舊會員資料（key 是 LINE ID、court 是 6／7）視為週日會員，對應到新場地
-const LEGACY_COURT_MAP = { 6: '4', 7: '5' };
 
 const db = getDatabase(initializeApp({ databaseURL: DB_URL }));
 const $ = (id) => document.getElementById(id);
@@ -131,9 +123,10 @@ function chainDay(c) {
   return DAYS[c?.day] ? c.day : 'sun';
 }
 
+// 只有 4、5 號場；改版前沒存 courts 的接龍（6、7 號場）不再支援
 function chainCourts(c) {
-  if (!c?.courts) return LEGACY_COURTS.map(courtView);
-  return Object.entries(c.courts)
+  return Object.entries(c?.courts || {})
+    .filter(([no]) => COURT_NOS.includes(no))
     .map(([no, x]) => courtView({ no, kind: KINDS[x.kind] ? x.kind : '交流', name: x.name, level: x.level }))
     .sort((a, b) => Number(a.no) - Number(b.no));
 }
@@ -142,23 +135,21 @@ const courtNos = (c) => chainCourts(c).map((x) => x.no);
 const courtSize = (c) => opsOf(chainDay(c)).courtSize;
 
 // ---------- 名額計算 ----------
-// 會員 key：新格式「LINE ID_sun」「LINE ID_fri」（週五、週日分開），舊格式就是 LINE ID（週日、6／7 號場）
+// 會員 key：「LINE ID_sun」「LINE ID_fri」（週五、週日分開）
 function memberKey(uid, day) {
   return `${uid}_${day}`;
 }
 
 function normalizeMember(key, m, fallbackName) {
-  if (!m || !PLANS.includes(m.plan) || !/^\d{1,2}$/.test(String(m.court))) return null;
-  const legacy = !key.includes('_');
-  const day = DAYS[m.day] ? m.day : (key.endsWith('_fri') ? 'fri' : 'sun');
-  const rawCourt = String(m.court);
+  const court = String(m?.court);
+  if (!m || !PLANS.includes(m.plan) || !COURT_NOS.includes(court) || !DAYS[m.day]) return null;
+  if (key !== memberKey(key.split('_')[0], m.day)) return null; // key 結尾要跟時段一致
   return {
     lineId: key.split('_')[0],
     name: String(m.name || fallbackName),
     plan: m.plan,
-    day,
-    rawCourt,
-    court: legacy && !m.day ? (LEGACY_COURT_MAP[rawCourt] || rawCourt) : rawCourt,
+    day: m.day,
+    court,
     ts: m.ts || 0,
   };
 }
@@ -172,12 +163,10 @@ function cleanList(val, fallbackName) {
   return out;
 }
 
-// 我在某個時段的會員資料（含 key）；舊格式會員只算週日
+// 我在某個時段的會員資料（含 key）
 function memberOf(uid, day, list = roster) {
   const key = memberKey(uid, day);
-  if (list[key]) return { key, ...list[key] };
-  if (day === 'sun' && list[uid]?.day === 'sun') return { key: uid, ...list[uid] };
-  return null;
+  return list[key] ? { key, ...list[key] } : null;
 }
 
 // 依報名時間排序，逐筆佔名額（本人 + 同行朋友）。
@@ -205,7 +194,7 @@ function courtData(c, no, members) {
   const size = courtSize(c);
   const court = chainCourts(c).find((x) => x.no === no);
   const list = Object.entries(members)
-    .filter(([, m]) => m.day === day && (m.court === no || m.rawCourt === no))
+    .filter(([, m]) => m.day === day && m.court === no)
     .map(([key, m]) => ({ uid: key, ...m, leave: !!c.leaves?.[key] }))
     .sort((a, b) => PLANS.indexOf(a.plan) - PLANS.indexOf(b.plan) || a.name.localeCompare(b.name));
   const active = list.filter((m) => !m.leave).length;
@@ -503,10 +492,9 @@ function myMember() {
   return chain ? memberOf(profile.userId, chainDay(chain)) : null;
 }
 
-// 每人每面場各一筆報名：key 是「LINE ID_場地」；舊資料 key 是 LINE ID，靠 court 欄位區分
+// 每人每面場各一筆報名：key 是「LINE ID_場地」
 function entryKey(no) {
-  const uid = profile.userId;
-  return chain?.entries?.[uid]?.court === no ? uid : `${uid}_${no}`;
+  return `${profile.userId}_${no}`;
 }
 
 function myEntry(no = selCourt) {
@@ -983,10 +971,10 @@ function openChain(id) {
   let first = true;
   unsubChain = onValue(ref(db, `chains/${id}`), (snap) => {
     chain = snap.val();
-    if (!chain || !('price' in chain)) {
+    if (!chain || !('price' in chain) || !chainCourts(chain).length) {
       chain = null;
       $('chainView').hidden = true;
-      setStatus(snap.exists() ? '這是舊版接龍，請重新開團' : '找不到這個接龍，連結可能有誤');
+      setStatus(snap.exists() ? '這是舊版接龍（6、7 號場），已停用，請重新開團' : '找不到這個接龍，連結可能有誤');
       return;
     }
     renderChain();

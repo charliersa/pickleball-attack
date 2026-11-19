@@ -12,7 +12,7 @@
         :root {
             color-scheme: dark;
             --bg: #07122b;
-            --panel: rgba(9, 20, 48, .80);
+            --panel: rgba(9, 20, 48, .42);
             --panel-2: rgba(255, 255, 255, .05);
             --line: rgba(255, 255, 255, .14);
             --line-gold: rgba(255, 196, 84, .35);
@@ -40,8 +40,8 @@
         body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; }
         body::before { background: var(--bg) url("assets/bg.jpg") center top / cover no-repeat; }
         body::after { z-index: -1;
-                      background: linear-gradient(180deg, rgba(5, 12, 32, .05) 0%, rgba(5, 12, 32, .35) 30%,
-                                                          rgba(5, 12, 32, .72) 55%, rgba(5, 12, 32, .82) 100%); }
+                      background: linear-gradient(180deg, rgba(5, 12, 32, 0) 0%, rgba(5, 12, 32, .15) 35%,
+                                                          rgba(5, 12, 32, .3) 65%, rgba(5, 12, 32, .4) 100%); }
 
         .wrap { max-width: 440px; margin: 0 auto; padding: 0 14px 40px; }
 
@@ -94,20 +94,23 @@
         /* ===== 分頁列 ===== */
         nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; padding: 8px;
               margin: 0 -4px; border-radius: 0 0 16px 16px; overflow-x: auto;
-              background: rgba(6, 14, 36, .82); border: 1px solid var(--line); border-top: 0;
-              -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+              background: rgba(6, 14, 36, .55); border: 1px solid var(--line); border-top: 0;
+              -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
         nav button { flex: 1 0 auto; padding: 10px 12px; font-size: 14px; border-radius: 10px; }
 
         /* ===== 內容面板（每個分頁一張玻璃卡） ===== */
         #chainView, #createView, #infoView, #reviewView, #noticeBoard {
             margin-top: 12px; padding: 6px 16px 18px; border-radius: 18px;
             background: var(--panel); border: 1px solid var(--line);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
-            -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .25);
+            text-shadow: 0 1px 3px rgba(0, 0, 0, .6); /* 底色半透明，靠陰影讓字在背景圖上也清楚 */
+            -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+        /* 金色按鈕上是深色字，不需要陰影 */
+        button:not(.secondary):not(.danger), .badge.q, .payTag.paid, .newTag { text-shadow: none; }
 
         /* ===== 公告欄 ===== */
         #noticeBoard { padding: 12px 16px; border-color: var(--line-gold);
-                       background: linear-gradient(180deg, rgba(255, 180, 50, .14), rgba(9, 20, 48, .82) 70%); }
+                       background: linear-gradient(180deg, rgba(255, 180, 50, .16), rgba(9, 20, 48, .42) 70%); }
         #noticeBoard .nbHead { display: flex; justify-content: space-between; align-items: baseline;
                                font-weight: 700; font-size: 15px; color: var(--gold); }
         .notice { padding: 10px 0; font-size: 14px; line-height: 1.6; }
@@ -412,6 +415,6 @@
 </script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <!-- 改版時把 v 加一（index.js 裡 import sheet.js 的 v 也要一起改），避免 LINE 瀏覽器用到快取的舊程式 -->
-<script type="module" src="index.js?v=24"></script>
+<script type="module" src="index.js?v=25"></script>
 </body>
 </html>

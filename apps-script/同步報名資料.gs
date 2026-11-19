@@ -13,9 +13,8 @@
 const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebasedatabase.app';
 const PLANS = ['季繳', '月繳'];
 const DAY_LABEL = { sun: '週日', fri: '週五' };
-// 場地統一為 4、5 號場。改版前的接龍與會員資料存的是 6、7 號，同步時換算：6→4（挑戰場）、7→5（交流場）
-const LEGACY_COURTS = { 6: { name: '進擊挑戰場', level: '3.0+' }, 7: { name: '進擊交流場', level: '2.5～2.99' } };
-const LEGACY_COURT_MAP = { 6: '4', 7: '5' };
+// 場地固定是 4、5 號場；改版前的 6、7 號場接龍與舊格式會員不再同步
+const COURT_NOS = ['4', '5'];
 const DEFAULT_COURT_SIZE = 8;
 const SHEETS = { members: '系統_會員名單', entries: '系統_報名明細', stats: '系統_每場統計' };
 
@@ -68,18 +67,16 @@ function fetchDb(path) {
 
 // ---------- 跟網站相同的名額邏輯（index.js） ----------
 function normalizeMember(key, m) {
-  if (!m || PLANS.indexOf(m.plan) < 0 || !/^\d{1,2}$/.test(String(m.court))) return null;
-  const legacy = key.indexOf('_') < 0;
-  const day = DAY_LABEL[m.day] ? m.day : (/_fri$/.test(key) ? 'fri' : 'sun');
-  const rawCourt = String(m.court);
+  const court = String(m && m.court);
+  if (!m || PLANS.indexOf(m.plan) < 0 || COURT_NOS.indexOf(court) < 0 || !DAY_LABEL[m.day]) return null;
+  if (key !== `${key.split('_')[0]}_${m.day}`) return null; // key 結尾要跟時段一致
   return {
     key,
     lineId: key.split('_')[0],
     name: String(m.name || ''),
     plan: m.plan,
-    day,
-    rawCourt,
-    court: legacy && !m.day ? (LEGACY_COURT_MAP[rawCourt] || rawCourt) : rawCourt,
+    day: m.day,
+    court,
     ts: m.ts || 0,
   };
 }
@@ -95,10 +92,11 @@ function chainDay(c) {
   return DAY_LABEL[c.day] ? c.day : 'sun';
 }
 
-// no：顯示用的場地號碼（4／5）；raw：資料庫裡報名存的號碼（舊接龍是 6／7）
+// 只取 4、5 號場；沒存 courts 的舊接龍回傳空陣列（不同步）
 function chainCourts(c) {
-  const src = c.courts || LEGACY_COURTS;
-  return Object.keys(src).map((raw) => ({ no: c.courts ? raw : (LEGACY_COURT_MAP[raw] || raw), raw, name: src[raw].name, level: src[raw].level }))
+  const src = c.courts || {};
+  return Object.keys(src).filter((no) => COURT_NOS.indexOf(no) >= 0)
+    .map((no) => ({ no, name: src[no].name, level: src[no].level }))
     .sort((a, b) => a.no - b.no);
 }
 
@@ -121,7 +119,7 @@ function courtData(c, court, members, size) {
     .map((m) => Object.assign({}, m, { leave: !!(c.leaves && c.leaves[m.key]) }));
   const active = ms.filter((m) => !m.leave).length;
   const cap = Math.max(0, size - active);
-  const entries = Object.keys(c.entries || {}).map((uid) => Object.assign({ uid }, c.entries[uid])).filter((e) => e.court === court.raw);
+  const entries = Object.keys(c.entries || {}).map((uid) => Object.assign({ uid }, c.entries[uid])).filter((e) => e.court === court.no);
   return Object.assign({ members: ms, active, cap, size }, splitEntries(entries, cap));
 }
 
