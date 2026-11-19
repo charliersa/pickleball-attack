@@ -11,7 +11,7 @@
         /* ===== 主題色（取自 logo 與背景：深夜藍 × 金色光芒） ===== */
         :root {
             color-scheme: dark;
-            --bg: #07122b;
+            --bg: #07122b5e;
             --panel: rgba(9, 20, 48, .42);
             --panel-2: rgba(255, 255, 255, .05);
             --line: rgba(255, 255, 255, .14);
@@ -34,7 +34,8 @@
         [hidden] { display: none !important; }
         html { background: var(--bg); }
         body { font-family: system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
-               color: var(--text); background: var(--bg); margin: 0; min-height: 100vh;
+               color: var(--text); background: transparent; margin: 0; min-height: 100vh;
+               /* body 不能有底色：背景圖在 z-index 負值的偽元素上，body 底色會蓋住它 */
                -webkit-font-smoothing: antialiased; }
         /* 背景圖固定不動（iOS 不支援 background-attachment: fixed，改用固定定位的偽元素） */
         body::before, body::after { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; }
