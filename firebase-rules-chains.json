@@ -63,7 +63,7 @@
         "courts": {
           "$no": {
             ".validate": "($no == '5' || $no == '6') && newData.hasChildren(['kind', 'name', 'level'])",
-            "kind": { ".validate": "newData.val() == '挑戰' || newData.val() == '交流' || newData.val() == '初學'" },
+            "kind": { ".validate": "newData.val() == '挑戰' || newData.val() == '交流' || newData.val() == '初學' || newData.val() == '車輪戰'" },
             "name": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
             "level": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
             "$other": { ".validate": false }

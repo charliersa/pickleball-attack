@@ -19,6 +19,7 @@ export const KINDS = {
   挑戰: { icon: '🔥', name: '進擊挑戰場', desc: '以 3.0+ 為主的跨級挑戰；2.99 以下可挑戰 3.0，3.0 可挑戰更高等級。' },
   交流: { icon: '⚔️', name: '進擊交流場', desc: '同級雙打交流，以球路穩定及戰術配合為主。' },
   初學: { icon: '🌱', name: '初學友善場', desc: '初學友善，從基本動作、規則與輪轉開始，輕鬆上手。' },
+  車輪戰: { icon: '🎡', name: '進擊車輪戰場', desc: '以 3.0 為主的車輪戰，輪番上陣、連續對戰，強度與節奏更高。' },
 };
 
 const DEFAULT_OPS = {
@@ -26,11 +27,11 @@ const DEFAULT_OPS = {
 };
 const DEFAULT_NAMES = {
   sun: { 挑戰: '進擊挑戰場', 交流: '進擊交流場' },
-  fri: { 初學: '初學友善場', 交流: '進階交流場' },
+  fri: { 初學: '初學友善場', 車輪戰: '進擊車輪戰場' },
 };
 const DEFAULT_COURTS = {
   sun: '第5場地挑戰3.0+／第6場地交流2.5～2.99',
-  fri: '第6場地初學2.0／第5場地交流2.5～3.3',
+  fri: '第5場地初學2.0／第6場地車輪戰3.0+',
 };
 
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -63,7 +64,7 @@ function parseCsv(text) {
 // '第5場地挑戰3.0+／第6場地交流2.5～2.99' → [{ no:'5', kind:'挑戰', level:'3.0+', name }, …]（依場地號碼排序）
 export function parseCourts(str, day, names) {
   return String(str || '').split(/[／/]/).map((part) => {
-    const m = part.match(/第?\s*(\d{1,2})\s*號?場地?\s*(挑戰|交流|初學)\s*(.*)/);
+    const m = part.match(/第?\s*(\d{1,2})\s*號?場地?\s*(挑戰|交流|初學|車輪戰)\s*(.*)/);
     if (!m) return null;
     const [, no, kind, rawLevel] = m;
     const level = rawLevel.trim().replace(/^(\d)$/, '$1.0') || '—';
