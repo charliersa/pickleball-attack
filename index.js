@@ -1,12 +1,12 @@
 // 進擊的匹克團 接龍報名（LIFF + Firebase Realtime Database + Google 試算表設定）
-// 每週五、週日兩個時段，各兩面場（鹿角 4、5 號），每面 8 人：會員保留名額 + 單次接龍；會員請假時名額自動釋出
+// 每週五、週日兩個時段，各兩面場（鹿角 5、6 號），每面 8 人：會員保留名額 + 單次接龍；會員請假時名額自動釋出
 // 場次行事曆、價格、場地分級從 Google 試算表「鹿角包場計劃」讀取（sheet.js）；報名資料存 Firebase
 // 無 ?e= 參數：開團表單；有 ?e=<接龍ID>：報名頁
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getDatabase, ref, push, set, update, remove, get, onValue, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-import { loadConfig, DAYS, DAY_KEYS, KINDS, COURT_NOS } from './sheet.js?v=25';
+import { loadConfig, DAYS, DAY_KEYS, KINDS, COURT_NOS } from './sheet.js?v=26';
 
 const LIFF_ID = '2012621364-BTCqnFfK';
 // 沿用匹克球計分系統的 Firebase 專案 pickleball-ad66b，資料放在 chains/ 與 pkclub/ 底下
@@ -123,7 +123,7 @@ function chainDay(c) {
   return DAYS[c?.day] ? c.day : 'sun';
 }
 
-// 只有 4、5 號場；改版前沒存 courts 的接龍（6、7 號場）不再支援
+// 只有 5、6 號場；其他場號或沒存 courts 的舊接龍不再支援
 function chainCourts(c) {
   return Object.entries(c?.courts || {})
     .filter(([no]) => COURT_NOS.includes(no))
@@ -608,7 +608,7 @@ function renderChain() {
 }
 
 // ---------- 報名表 ----------
-// form = { self: { 4: bool, 5: bool }, dupr, pay, friends: [{ name, dupr, court }] }
+// form = { self: { 5: bool, 6: bool }, dupr, pay, friends: [{ name, dupr, court }] }
 // 送出時每面場各存成一筆報名：自己有沒有打 + 這面場的朋友
 function formFromEntries() {
   const nos = courtNos(chain);

@@ -11,8 +11,8 @@ export const DAYS = {
   fri: { label: '週五', short: '五', wd: 5 },
 };
 export const DAY_KEYS = ['fri', 'sun']; // 一週裡的先後順序
-// 場地固定是鹿角 4、5 號場；試算表寫到其他號碼會被忽略
-export const COURT_NOS = ['4', '5'];
+// 場地固定是鹿角 5、6 號場；試算表寫到其他號碼會被忽略
+export const COURT_NOS = ['5', '6'];
 
 // 場地類型：行事曆「場地／程度」欄裡的關鍵字
 export const KINDS = {
@@ -29,8 +29,8 @@ const DEFAULT_NAMES = {
   fri: { 初學: '初學友善場', 交流: '進階交流場' },
 };
 const DEFAULT_COURTS = {
-  sun: '第4場地挑戰3.0+／第5場地交流2.5～2.99',
-  fri: '第5場地初學2.0／第4場地交流2.5～3.3',
+  sun: '第5場地挑戰3.0+／第6場地交流2.5～2.99',
+  fri: '第6場地初學2.0／第5場地交流2.5～3.3',
 };
 
 const toISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -60,7 +60,7 @@ function parseCsv(text) {
   return rows.map((r) => r.map((c) => c.trim()));
 }
 
-// '第4場地挑戰3.0+／第5場地交流2.5～2.99' → [{ no:'4', kind:'挑戰', level:'3.0+', name }, …]（依場地號碼排序）
+// '第5場地挑戰3.0+／第6場地交流2.5～2.99' → [{ no:'5', kind:'挑戰', level:'3.0+', name }, …]（依場地號碼排序）
 export function parseCourts(str, day, names) {
   return String(str || '').split(/[／/]/).map((part) => {
     const m = part.match(/第?\s*(\d{1,2})\s*號?場地?\s*(挑戰|交流|初學)\s*(.*)/);

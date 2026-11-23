@@ -10,18 +10,18 @@ pkclub
     <LINE ID>_sun           ← 週日會員（週五會員用 <LINE ID>_fri）
       name:  "阿哲"
       plan:  "季繳"          ← 只能填 "季繳" 或 "月繳"
-      court: "4"             ← 場地號碼（字串），要跟試算表行事曆的場地一致
+      court: "5"             ← 場地號碼（字串），要跟試算表行事曆的場地一致
       day:   "sun"           ← 要跟 key 結尾一致："sun" 或 "fri"
 
 會員的 LINE ID：「團資訊」分頁的「會員綁定（進階）」區塊目前已隱藏（index.html 的 memberBindBox），要用時把 hidden 拿掉；或直接看「團主管理」審核通過後寫入的 key。
 每面場建議季繳 2 人、月繳 2 人；單次名額 = 8 − 該場未請假的會員數，自動計算。
-場地只能是 "4" 或 "5"；舊格式（key 只有 LINE ID、court "6"／"7"、沒有 day）已停用，不會被當成會員。
+場地只能是 "5" 或 "6"；舊格式（key 只有 LINE ID、court 不是 5／6、沒有 day）已停用，不會被當成會員。
 
 匯入 JSON 範例：
 {
-  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1_sun": { "name": "阿哲", "plan": "季繳", "court": "4", "day": "sun" },
-  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1_fri": { "name": "阿哲", "plan": "月繳", "court": "4", "day": "fri" },
-  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx2_fri": { "name": "小葉", "plan": "季繳", "court": "5", "day": "fri" }
+  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1_sun": { "name": "阿哲", "plan": "季繳", "court": "5", "day": "sun" },
+  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx1_fri": { "name": "阿哲", "plan": "月繳", "court": "5", "day": "fri" },
+  "Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx2_fri": { "name": "小葉", "plan": "季繳", "court": "6", "day": "fri" }
 }
 （匯入時要先點到 pkclub/members 那一層再匯入，不然會蓋掉整個資料庫！）
 

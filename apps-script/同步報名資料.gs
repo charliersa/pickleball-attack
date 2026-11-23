@@ -13,8 +13,8 @@
 const DB_URL = 'https://pickleball-ad66b-default-rtdb.asia-southeast1.firebasedatabase.app';
 const PLANS = ['季繳', '月繳'];
 const DAY_LABEL = { sun: '週日', fri: '週五' };
-// 場地固定是 4、5 號場；改版前的 6、7 號場接龍與舊格式會員不再同步
-const COURT_NOS = ['4', '5'];
+// 場地固定是 5、6 號場；改版前的舊接龍與舊格式會員不再同步
+const COURT_NOS = ['5', '6'];
 const DEFAULT_COURT_SIZE = 8;
 const SHEETS = { members: '系統_會員名單', entries: '系統_報名明細', stats: '系統_每場統計' };
 
@@ -92,7 +92,7 @@ function chainDay(c) {
   return DAY_LABEL[c.day] ? c.day : 'sun';
 }
 
-// 只取 4、5 號場；沒存 courts 的舊接龍回傳空陣列（不同步）
+// 只取 5、6 號場；沒存 courts 的舊接龍回傳空陣列（不同步）
 function chainCourts(c) {
   const src = c.courts || {};
   return Object.keys(src).filter((no) => COURT_NOS.indexOf(no) >= 0)
